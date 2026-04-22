@@ -49,7 +49,7 @@ MNIST_CONFIG = {
     "grad_clip": 2.0,
     "ema_decay": 0.999,
     "warmup_steps": 1000,
-    "epochs": 20,
+    "epochs": 100,
     "alpha_min": 1.0,
     "alpha_max": 1.0,
     "use_feature_encoder": False,  # Pixel space for MNIST
