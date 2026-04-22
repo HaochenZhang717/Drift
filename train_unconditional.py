@@ -39,43 +39,21 @@ MNIST_CONFIG = {
     "model": "DriftDiT-Tiny",
     "img_size": 32,
     "in_channels": 1,
-    "num_classes": 10,
-    "batch_nc": 10,  # Number of classes per batch
-    "batch_n_pos": 32,  # Positive samples per class
-    "batch_n_neg": 32,  # Negative samples per class
+    "num_classes": 1,
+    "batch_nc": 1,  # Number of classes per batch
+    "batch_n_pos": 320,  # Positive samples per class
+    "batch_n_neg": 320,  # Negative samples per class
     "temperatures": [0.02, 0.05, 0.2],
     "lr": 2e-4,
     "weight_decay": 0.01,
     "grad_clip": 2.0,
     "ema_decay": 0.999,
     "warmup_steps": 1000,
-    "epochs": 100,
+    "epochs": 20,
     "alpha_min": 1.0,
-    "alpha_max": 3.0,
+    "alpha_max": 1.0,
     "use_feature_encoder": False,  # Pixel space for MNIST
-    "queue_size": 128,
-    "label_dropout": 0.1,
-}
-
-CIFAR10_CONFIG = {
-    "model": "DriftDiT-Small",
-    "img_size": 32,
-    "in_channels": 3,
-    "num_classes": 10,
-    "batch_nc": 10,
-    "batch_n_pos": 32,
-    "batch_n_neg": 32,
-    "temperatures": [0.02, 0.05, 0.2],
-    "lr": 2e-4,
-    "weight_decay": 0.01,
-    "grad_clip": 2.0,
-    "ema_decay": 0.999,
-    "warmup_steps": 2000,
-    "epochs": 200,
-    "alpha_min": 1.0,
-    "alpha_max": 3.0,
-    "use_feature_encoder": True,  # Use pretrained ResNet for feature space
-    "queue_size": 128,
+    "queue_size": 1280,
     "label_dropout": 0.1,
 }
 
@@ -280,7 +258,6 @@ def train_step(
         device=device,
     )
 
-    breakpoint()
     # Generate samples
     x_gen = model(noise, labels, alpha) # (n_class*n_neg, 1, 32, 32)
 
@@ -324,7 +301,7 @@ def fill_queue(
     """Fill the sample queue with real data."""
     for batch in dataloader:
         if isinstance(batch, (list, tuple)):
-            x, labels = batch[0], batch[1]
+            x, labels = batch[0], torch.zeros(batch[0].shape[0], dtype=torch.long)
         else:
             x, labels = batch, torch.zeros(batch.shape[0], dtype=torch.long)
 
@@ -336,13 +313,13 @@ def fill_queue(
 
 def train(
     dataset: str = "mnist",
-    output_dir: str = "./outputs",
+    output_dir: str = "./outputs_unconditional",
     data_root: str = "./data",
     download: bool = True,
     resume: Optional[str] = None,
     seed: int = 42,
     num_workers: int = 4,
-    log_interval: int = 100,
+    log_interval: int = 1,
     save_interval: int = 10,
     sample_interval: int = 10,
 ):
@@ -450,7 +427,9 @@ def train(
 
         for batch_idx, batch in enumerate(train_loader):
             if isinstance(batch, (list, tuple)):
-                x_real, labels_real = batch[0].to(device), batch[1].to(device)
+                x_real = batch[0].to(device)
+                labels_real = torch.zeros(x_real.shape[0], dtype=torch.long, device=device)
+
             else:
                 x_real = batch.to(device)
                 labels_real = torch.zeros(x_real.shape[0], dtype=torch.long, device=device)
@@ -502,7 +481,7 @@ def train(
                     config,
                     device,
                     str(sample_path),
-                    num_per_class=8,
+                    num_samples=80,
                 )
                 print(f"Saved samples to {sample_path}")
 
@@ -539,7 +518,7 @@ def train(
                 config,
                 device,
                 str(sample_path),
-                num_per_class=8,
+                num_samples=80,
             )
             print(f"Saved samples to {sample_path}")
 
@@ -564,31 +543,23 @@ def generate_samples(
     config: dict,
     device: torch.device,
     save_path: str,
-    num_per_class: int = 8,
+    num_samples: int = 80,
     alpha: float = 1.5,
 ):
     """Generate samples for visualization."""
     model.eval()
 
-    num_classes = config["num_classes"]
     in_channels = config["in_channels"]
     img_size = config["img_size"]
 
-    # Generate samples for each class
-    samples = []
-    for c in range(num_classes):
-        noise = torch.randn(num_per_class, in_channels, img_size, img_size, device=device)
-        labels = torch.full((num_per_class,), c, device=device, dtype=torch.long)
-        alpha_tensor = torch.full((num_per_class,), alpha, device=device)
-
-        # Use CFG
-        x = model.forward_with_cfg(noise, labels, alpha=alpha)
-        samples.append(x)
-
-    samples = torch.cat(samples, dim=0)
+    noise = torch.randn(num_samples, in_channels, img_size, img_size, device=device)
+    labels = torch.zeros(num_samples, device=device, dtype=torch.long)
+    alpha_tensor = torch.full((num_samples,), alpha, device=device)
+    samples = model(noise, labels, alpha_tensor)
     samples = samples.clamp(-1, 1)
 
-    save_image_grid(samples, save_path, nrow=num_per_class)
+    # 10 rows x 8 cols => nrow=8 for 80 samples
+    save_image_grid(samples, save_path, nrow=8)
 
 
 def main():
