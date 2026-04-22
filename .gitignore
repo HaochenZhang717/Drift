@@ -12,7 +12,7 @@ data/
 *.pth
 
 # Outputs
-outputs/
+
 
 # IDE
 .vscode/
