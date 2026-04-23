@@ -11,8 +11,6 @@ data/
 *.pt
 *.pth
 
-# Outputs
-
 
 # IDE
 .vscode/

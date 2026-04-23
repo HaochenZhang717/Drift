@@ -456,7 +456,7 @@ def fill_queue(
 
 def train(
     dataset: str = "sine",
-    output_dir: str = "./outputs_ts_unconditional",
+    output_dir: str = "./outputs",
     data_root: str = "./data",
     download: bool = True,
     resume: Optional[str] = None,
@@ -729,7 +729,7 @@ def main():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="./outputs_ts_unconditional",
+        default="./outputs/sine_unconditional",
         help="Output directory",
     )
     parser.add_argument(
