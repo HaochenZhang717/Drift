@@ -10,13 +10,14 @@ import os
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional
-
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from torchvision import datasets, transforms
-
 from model import DriftDiT_Tiny, DriftDiT_Small, DriftDiT_models
 from img_transformations import DelayEmbedder
 from drifting import (
@@ -692,6 +693,44 @@ def train(
     print(f"Training complete! Final checkpoint saved to {final_path}")
 
 
+def save_time_series_grid(
+    series: torch.Tensor,
+    save_path: str,
+    ncol: int = 8,
+):
+    """Save time-series samples as a grid of line plots."""
+    if series.ndim == 2:
+        series = series.unsqueeze(-1)
+
+    num_samples, seq_len, channels = series.shape
+    ncol = max(1, ncol)
+    nrow = math.ceil(num_samples / ncol)
+
+    fig, axes = plt.subplots(
+        nrow,
+        ncol,
+        figsize=(ncol * 2.0, nrow * 1.5),
+        sharex=True,
+        sharey=True,
+    )
+    axes = axes.flatten() if hasattr(axes, "flatten") else [axes]
+    t = torch.arange(seq_len).cpu().numpy()
+    series_np = series.detach().cpu().numpy()
+
+    for i, ax in enumerate(axes):
+        if i < num_samples:
+            ax.plot(t, series_np[i, :, 0], linewidth=1.0)
+            ax.set_xticks([])
+            ax.set_yticks([])
+        else:
+            ax.axis("off")
+
+    Path(save_path).parent.mkdir(parents=True, exist_ok=True)
+    fig.tight_layout(pad=0.3)
+    fig.savefig(save_path, dpi=150)
+    plt.close(fig)
+
+
 @torch.no_grad()
 def generate_samples(
     model: nn.Module,
@@ -701,7 +740,7 @@ def generate_samples(
     num_samples: int = 80,
     alpha: float = 1.5,
 ):
-    """Generate samples for visualization."""
+    """Generate samples and save visualization."""
     model.eval()
 
     in_channels = config["in_channels"]
@@ -713,8 +752,20 @@ def generate_samples(
     samples = model(noise, labels, alpha_tensor)
     samples = samples.clamp(-1, 1)
 
-    # 10 rows x 8 cols => nrow=8 for 80 samples
-    save_image_grid(samples, save_path, nrow=8)
+    dataset_name = str(config.get("dataset", "")).lower()
+    is_ts_dataset = dataset_name in ["sine", "ts", "timeseries", "synthetic_sine"]
+
+    if is_ts_dataset:
+        seq_len = config["ts_seq_len"]
+        delay = config["ts_delay"]
+        embedding = config["ts_embedding"]
+        embedder = DelayEmbedder(device=device, seq_len=seq_len, delay=delay, embedding=embedding)
+        # For generated images we know the unpadded shape is embedding x embedding.
+        embedder.img_shape = (num_samples, in_channels, embedding, embedding)
+        series = embedder.img_to_ts(samples)
+        save_time_series_grid(series, save_path, ncol=8)  # 10 x 8 for 80 samples
+    else:
+        save_image_grid(samples, save_path, nrow=8)
 
 
 def main():
