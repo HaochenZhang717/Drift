@@ -7,7 +7,7 @@ dist/
 build/
 
 # Data
-AI-READI/
+AI-READI-processed/
 
 data/
 *.pt
