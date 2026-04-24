@@ -39,7 +39,19 @@ from utils import (
     count_parameters,
     set_seed,
 )
+import pandas as pd
 
+
+def normalize_ts_to_unit_range(ts: torch.Tensor) -> torch.Tensor:
+    """
+    Normalize a 1D time series to [-1, 1] with per-series min-max scaling.
+    """
+    ts_min = ts.min()
+    ts_max = ts.max()
+    scale = ts_max - ts_min
+    if scale < 1e-6:
+        return torch.zeros_like(ts)
+    return 2.0 * (ts - ts_min) / scale - 1.0
 
 # Default hyperparameters
 MNIST_CONFIG = {
@@ -100,6 +112,35 @@ TS_SINE_CONFIG = {
 }
 
 
+
+TS_GLUCOSE_CONFIG = {
+    "model": "DriftDiT-Tiny",
+    "img_size": 16,  # Must match delay embedding size
+    "in_channels": 1,
+    "num_classes": 1,
+    "batch_nc": 1,
+    "batch_n_pos": 320,
+    "batch_n_neg": 320,
+    "temperatures": [0.02, 0.05, 0.2],
+    "lr": 2e-4,
+    "weight_decay": 0.01,
+    "grad_clip": 2.0,
+    "ema_decay": 0.999,
+    "warmup_steps": 1000,
+    "epochs": 100,
+    "alpha_min": 1.0,
+    "alpha_max": 1.0,
+    "use_feature_encoder": False,
+    "queue_size": 1280,
+    "label_dropout": 0.0,
+    # Sine time-series synthesis + delay embedding params
+    "ts_seq_len": 128,  # Gives exactly 32 delay columns for delay=1, embedding=32
+    "ts_delay": 8,
+    "ts_embedding": 16,
+}
+
+
+
 class SyntheticSineDataset(Dataset):
     """Synthetic sine-wave time series, transformed to images with DelayEmbedder."""
 
@@ -152,16 +193,98 @@ class SyntheticSineDataset(Dataset):
             phase = torch.empty(1).uniform_(0.0, 2.0 * math.pi, generator=g).item()
             signal = signal + amp * torch.sin(2.0 * math.pi * freq * t + phase)
 
-        signal = signal / (signal.abs().max() + 1e-6)
         if self.noise_std > 0:
             signal = signal + torch.randn(self.seq_len, generator=g) * self.noise_std
-        signal = signal.clamp(-1.0, 1.0)
+        signal = normalize_ts_to_unit_range(signal)
         return signal.unsqueeze(-1)  # (seq_len, 1)
 
     def __getitem__(self, idx: int) -> tuple:
         ts = self._make_signal(idx)
         img = self.embedder.ts_to_img(ts.unsqueeze(0), pad=True, mask=0.0).squeeze(0)
         label = torch.tensor(0, dtype=torch.long)
+        return img, label
+
+
+
+class GlucoseSlidingWindowDataset(Dataset):
+
+    def __init__(
+
+        self,
+
+        parquet_path,
+
+        embedder,
+
+        seq_len=128,
+
+        stride=1,
+
+        normalize=True,
+
+    ):
+
+        self.df = pd.read_parquet(parquet_path)
+
+        self.embedder = embedder
+
+        self.seq_len = seq_len
+
+        self.stride = stride
+
+        self.normalize = normalize
+
+        self.windows = []  # (row_idx, start_idx)
+
+        # 预计算所有 window 索引（关键）
+
+        for row_idx, ts in enumerate(self.df["glucose"]):
+
+            L = len(ts)
+
+            if L < seq_len:
+
+                continue
+
+            for start in range(0, L - seq_len + 1, stride):
+
+                self.windows.append((row_idx, start))
+
+    def __len__(self):
+
+        return len(self.windows)
+
+    def _process_ts(self, ts):
+
+        ts = torch.tensor(ts, dtype=torch.float32)
+
+        if self.normalize:
+            ts = normalize_ts_to_unit_range(ts)
+
+        return ts.unsqueeze(-1)  # (T,1)
+
+    def __getitem__(self, idx):
+
+        row_idx, start = self.windows[idx]
+
+        full_ts = self.df["glucose"].iloc[row_idx]
+
+        window = full_ts[start : start + self.seq_len]
+
+        ts = self._process_ts(window)
+
+        img = self.embedder.ts_to_img(
+
+            ts.unsqueeze(0),  # (1,T,1)
+
+            pad=True,
+
+            mask=0.0,
+
+        ).squeeze(0)
+
+        label = torch.tensor(0, dtype=torch.long)
+
         return img, label
 
 
@@ -207,6 +330,30 @@ def get_dataset(
             noise_std=config["ts_noise_std"],
             seed=seed + 1_000_000,
         )
+    elif name == "glucose":
+        embedder = DelayEmbedder(
+            device=torch.device("cpu"),
+            seq_len=config["ts_seq_len"],
+            delay=config["ts_delay"],
+            embedding=config["ts_embedding"],
+        )
+
+        train_dataset = GlucoseSlidingWindowDataset(
+            parquet_path="./AI-READI/glucose_train.parquet",
+            embedder=embedder,
+            seq_len=config["ts_seq_len"],
+            stride=128,
+        )
+
+        test_dataset = GlucoseSlidingWindowDataset(
+            parquet_path="./AI-READI/glucose_test.parquet",
+            embedder=embedder,
+            seq_len=config["ts_seq_len"],
+            stride=128,
+        )
+
+        print("{} train and {} test datasets".format(len(train_dataset), len(test_dataset)))
+
     elif name == "mnist":
         # MNIST data will be at {root}/mnist/MNIST/raw/
         mnist_root = os.path.join(root, "mnist")
@@ -256,6 +403,61 @@ def sample_batch(
     return x_pos, labels
 
 
+def build_delay_embedding_mask(config: dict, device: torch.device) -> Optional[torch.Tensor]:
+    """
+    Build a fixed spatial mask for delay-embedding images.
+
+    Returns a mask of shape (1, 1, H, W) with 1.0 on valid regions and 0.0 on
+    padded regions. For non-time-series datasets, returns None.
+    """
+    dataset_name = config["dataset"].lower()
+    if dataset_name not in ["sine", "ts", "timeseries", "synthetic_sine", "glucose"]:
+        return None
+
+    seq_len = config["ts_seq_len"]
+    delay = config["ts_delay"]
+    embedding = config["ts_embedding"]
+    img_size = config["img_size"]
+
+    if img_size != embedding:
+        raise ValueError(
+            f"Expected img_size ({img_size}) to match ts_embedding ({embedding}) "
+            "for delay-embedding mask construction."
+        )
+
+    mask = torch.zeros((1, 1, embedding, embedding), dtype=torch.float32, device=device)
+
+    col = 0
+    while (col * delay + embedding) <= seq_len and col < embedding:
+        mask[:, :, :, col] = 1.0
+        col += 1
+
+    if (
+        col < embedding
+        and col * delay != seq_len
+        and col * delay + embedding > seq_len
+    ):
+        valid_rows = seq_len - col * delay
+        if valid_rows > 0:
+            mask[:, :, :valid_rows, col] = 1.0
+
+    return mask
+
+
+def masked_global_avg_pool2d(
+    features: torch.Tensor,
+    spatial_mask: torch.Tensor,
+) -> torch.Tensor:
+    """Average-pool features over valid spatial locations only."""
+    resized_mask = F.interpolate(
+        spatial_mask.to(dtype=features.dtype),
+        size=features.shape[-2:],
+        mode="nearest",
+    )
+    denom = resized_mask.sum(dim=(-2, -1)).clamp_min(1.0)
+    return (features * resized_mask).sum(dim=(-2, -1)) / denom
+
+
 def compute_drifting_loss(
     x_gen: torch.Tensor,
     labels_gen: torch.Tensor,
@@ -264,6 +466,7 @@ def compute_drifting_loss(
     feature_encoder: Optional[nn.Module],
     temperatures: list,
     use_pixel_space: bool = False,
+    spatial_mask: Optional[torch.Tensor] = None,
 ) -> tuple:
     """
     Compute class-conditional drifting loss with multi-scale features.
@@ -278,6 +481,7 @@ def compute_drifting_loss(
         feature_encoder: Feature encoder (returns List[Tensor] for multi-scale)
         temperatures: List of temperatures for V computation
         use_pixel_space: Whether to use pixel space directly
+        spatial_mask: Optional mask with 1.0 on valid regions and 0.0 on padding
 
     Returns:
         loss: Scalar loss
@@ -287,6 +491,11 @@ def compute_drifting_loss(
     num_classes = labels_gen.max().item() + 1
 
     # Extract features
+    if spatial_mask is not None:
+        spatial_mask = spatial_mask.to(device=device, dtype=x_gen.dtype)
+        x_gen = x_gen * spatial_mask
+        x_pos = x_pos * spatial_mask
+
     if use_pixel_space or feature_encoder is None:
         # Pixel space: single scale
         feat_gen_list = [x_gen.flatten(start_dim=1)]
@@ -297,9 +506,14 @@ def compute_drifting_loss(
         with torch.no_grad():
             feat_pos_maps = feature_encoder(x_pos)
 
-        # Global average pool each scale to get vectors
-        feat_gen_list = [F.adaptive_avg_pool2d(f, 1).flatten(1) for f in feat_gen_maps]
-        feat_pos_list = [F.adaptive_avg_pool2d(f, 1).flatten(1) for f in feat_pos_maps]
+        # Global average pool each scale to get vectors. For time-series images,
+        # exclude padded regions from the pooled representation.
+        if spatial_mask is None:
+            feat_gen_list = [F.adaptive_avg_pool2d(f, 1).flatten(1) for f in feat_gen_maps]
+            feat_pos_list = [F.adaptive_avg_pool2d(f, 1).flatten(1) for f in feat_pos_maps]
+        else:
+            feat_gen_list = [masked_global_avg_pool2d(f, spatial_mask) for f in feat_gen_maps]
+            feat_pos_list = [masked_global_avg_pool2d(f, spatial_mask) for f in feat_pos_maps]
 
     total_loss = torch.tensor(0.0, device=device, requires_grad=True)
     total_drift_norm = 0.0
@@ -368,6 +582,7 @@ def train_step(
     config: dict,
     device: torch.device,
     feature_encoder: Optional[nn.Module] = None,
+    spatial_mask: Optional[torch.Tensor] = None,
 ) -> dict:
     """
     Single training step (Algorithm 1).
@@ -421,6 +636,7 @@ def train_step(
         feature_encoder,
         temperatures,
         use_pixel_space=use_pixel,
+        spatial_mask=spatial_mask,
     )
 
     # Backward pass
@@ -479,6 +695,9 @@ def train(
         config = TS_SINE_CONFIG.copy()
     elif dataset_name == "mnist":
         config = MNIST_CONFIG.copy()
+    elif dataset_name == "glucose":
+        config = TS_GLUCOSE_CONFIG.copy()
+
     else:
         raise ValueError(f"Unsupported dataset for this script: {dataset}")
     config["dataset"] = dataset
@@ -544,6 +763,7 @@ def train(
         queue_size=config["queue_size"],
         sample_shape=(config["in_channels"], config["img_size"], config["img_size"]),
     )
+    spatial_mask = build_delay_embedding_mask(config, device)
 
     # Feature encoder (for CIFAR)
     feature_encoder = None
@@ -608,6 +828,7 @@ def train(
                 config,
                 device,
                 feature_encoder,
+                spatial_mask,
             )
 
             # Update EMA and scheduler
@@ -776,8 +997,8 @@ def main():
     parser.add_argument(
         "--dataset",
         type=str,
-        default="sine",
-        choices=["sine", "mnist"],
+        default="glucose",
+        choices=["sine", "glucose"],
         help="Dataset to train on",
     )
     parser.add_argument(

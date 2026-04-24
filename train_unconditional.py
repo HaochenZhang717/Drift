@@ -9,13 +9,16 @@ import time
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+import numpy as np
+import pandas as pd
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.utils.data import DataLoader
+from torch.utils.data import ConcatDataset, DataLoader, Dataset
 from torchvision import datasets, transforms
 
 from model import DriftDiT_Tiny, DriftDiT_Small, DriftDiT_models
+from img_transformations import DelayEmbedder
 from drifting import (
     compute_V,
     normalize_features,
@@ -57,10 +60,178 @@ MNIST_CONFIG = {
     "label_dropout": 0.1,
 }
 
+CIFAR10_CONFIG = {
+    "model": "DriftDiT-Small",
+    "img_size": 32,
+    "in_channels": 3,
+    "num_classes": 1,
+    "batch_nc": 1,
+    "batch_n_pos": 320,
+    "batch_n_neg": 320,
+    "temperatures": [0.02, 0.05, 0.2],
+    "lr": 2e-4,
+    "weight_decay": 0.01,
+    "grad_clip": 2.0,
+    "ema_decay": 0.999,
+    "warmup_steps": 1000,
+    "epochs": 100,
+    "alpha_min": 1.0,
+    "alpha_max": 1.0,
+    "use_feature_encoder": True,
+    "queue_size": 1280,
+    "label_dropout": 0.1,
+}
 
-def get_dataset(name: str, root: str = "./data", download: bool = True) -> tuple:
+GLUCOSE_CONFIG = {
+    "model": "DriftDiT-Tiny",
+    "img_size": 16,
+    "in_channels": 1,
+    "num_classes": 1,
+    "batch_nc": 1,
+    "batch_n_pos": 320,
+    "batch_n_neg": 320,
+    "temperatures": [0.02, 0.05, 0.2],
+    "lr": 2e-4,
+    "weight_decay": 0.01,
+    "grad_clip": 2.0,
+    "ema_decay": 0.999,
+    "warmup_steps": 1000,
+    "epochs": 100,
+    "alpha_min": 1.0,
+    "alpha_max": 1.0,
+    "use_feature_encoder": False,
+    "queue_size": 1280,
+    "label_dropout": 0.0,
+    "window_size": 128,
+    "window_stride": 32,
+    "delay": 8,
+    "embedding": 16,
+}
+
+
+class GlucoseParquetDataset(Dataset):
+    """Windowed glucose time series dataset backed by parquet files."""
+
+    def __init__(
+        self,
+        parquet_path: str,
+        window_size: int,
+        window_stride: int,
+        delay: int,
+        embedding: int,
+        value_min: Optional[float] = None,
+        value_max: Optional[float] = None,
+    ):
+        self.parquet_path = parquet_path
+        if window_size <= 0:
+            raise ValueError("window_size must be positive")
+        if window_stride <= 0:
+            raise ValueError("window_stride must be positive")
+        if delay <= 0:
+            raise ValueError("delay must be positive")
+        if embedding <= 0:
+            raise ValueError("embedding must be positive")
+
+        self.window_size = window_size
+        self.window_stride = window_stride
+        self.delay = delay
+        self.embedding = embedding
+        self.embedder = DelayEmbedder(
+            device=torch.device("cpu"),
+            seq_len=window_size,
+            delay=delay,
+            embedding=embedding,
+        )
+
+        df = pd.read_parquet(parquet_path, columns=["glucose"])
+        self.sequences = []
+        self.window_index = []
+
+        if value_min is None or value_max is None:
+            value_min, value_max = self._compute_min_max(df["glucose"])
+        self.value_min = float(value_min)
+        self.value_max = float(value_max)
+
+        for row in df.itertuples(index=False):
+            seq = self._normalize_sequence(row.glucose)
+            if seq.numel() == 0:
+                continue
+
+            seq_idx = len(self.sequences)
+            self.sequences.append(seq)
+            for start in self._window_starts(len(seq)):
+                self.window_index.append((seq_idx, start))
+
+        if not self.window_index:
+            raise ValueError(f"No glucose windows could be constructed from {parquet_path}")
+
+    @staticmethod
+    def _compute_min_max(series: pd.Series) -> tuple[float, float]:
+        mins = []
+        maxs = []
+        for values in series:
+            arr = np.asarray(values, dtype=np.float32)
+            arr = arr[np.isfinite(arr)]
+            if arr.size == 0:
+                continue
+            mins.append(float(arr.min()))
+            maxs.append(float(arr.max()))
+
+        if not mins:
+            raise ValueError("Could not compute glucose min/max from parquet data")
+
+        return min(mins), max(maxs)
+
+    def _normalize_sequence(self, values: np.ndarray) -> torch.Tensor:
+        arr = np.asarray(values, dtype=np.float32)
+        arr = arr[np.isfinite(arr)]
+        if arr.size == 0:
+            return torch.empty(0, dtype=torch.float32)
+
+        scale = max(self.value_max - self.value_min, 1e-6)
+        arr = 2.0 * ((arr - self.value_min) / scale) - 1.0
+        arr = np.clip(arr, -1.0, 1.0)
+        return torch.from_numpy(arr)
+
+    def _window_starts(self, seq_len: int) -> list[int]:
+        if seq_len <= self.window_size:
+            return [0]
+
+        starts = list(range(0, seq_len - self.window_size + 1, self.window_stride))
+        last_start = seq_len - self.window_size
+        if starts[-1] != last_start:
+            starts.append(last_start)
+        return starts
+
+    def __len__(self) -> int:
+        return len(self.window_index)
+
+    def __getitem__(self, idx: int) -> tuple[torch.Tensor, torch.Tensor]:
+        seq_idx, start = self.window_index[idx]
+        seq = self.sequences[seq_idx]
+        window = seq[start:start + self.window_size]
+        if window.shape[0] < self.window_size:
+            pad_len = self.window_size - window.shape[0]
+            pad_value = float(window[-1].item()) if window.numel() > 0 else 0.0
+            window = F.pad(window, (0, pad_len), value=pad_value)
+
+        ts = window.view(1, self.window_size, 1)
+        img = self.embedder.ts_to_img(ts, pad=True, mask=0.0).squeeze(0)
+        label = torch.tensor(0, dtype=torch.long)
+        return img, label
+
+
+def get_dataset(
+    name: str,
+    root: str = "./data",
+    download: bool = True,
+    config: Optional[dict] = None,
+) -> tuple:
     """Get dataset and transforms."""
-    if name.lower() == "mnist":
+    name = name.lower()
+    config = config or {}
+
+    if name == "mnist":
         # MNIST data will be at {root}/mnist/MNIST/raw/
         mnist_root = os.path.join(root, "mnist")
         transform = transforms.Compose([
@@ -70,7 +241,7 @@ def get_dataset(name: str, root: str = "./data", download: bool = True) -> tuple
         ])
         train_dataset = datasets.MNIST(mnist_root, train=True, download=download, transform=transform)
         test_dataset = datasets.MNIST(mnist_root, train=False, download=download, transform=transform)
-    elif name.lower() in ["cifar10", "cifar"]:
+    elif name in ["cifar10", "cifar"]:
         transform = transforms.Compose([
             transforms.RandomHorizontalFlip(),
             transforms.ToTensor(),
@@ -82,6 +253,37 @@ def get_dataset(name: str, root: str = "./data", download: bool = True) -> tuple
         ])
         train_dataset = datasets.CIFAR10(root, train=True, download=download, transform=transform)
         test_dataset = datasets.CIFAR10(root, train=False, download=download, transform=test_transform)
+    elif name == "glucose":
+        train_path = os.path.join(root, "glucose_train.parquet")
+        valid_path = os.path.join(root, "glucose_valid.parquet")
+        test_path = os.path.join(root, "glucose_test.parquet")
+
+        train_dataset = GlucoseParquetDataset(
+            parquet_path=train_path,
+            window_size=config["window_size"],
+            window_stride=config["window_stride"],
+            delay=config["delay"],
+            embedding=config["embedding"],
+        )
+        valid_dataset = GlucoseParquetDataset(
+            parquet_path=valid_path,
+            window_size=config["window_size"],
+            window_stride=config["window_stride"],
+            delay=config["delay"],
+            embedding=config["embedding"],
+            value_min=train_dataset.value_min,
+            value_max=train_dataset.value_max,
+        )
+        heldout_test_dataset = GlucoseParquetDataset(
+            parquet_path=test_path,
+            window_size=config["window_size"],
+            window_stride=config["window_stride"],
+            delay=config["delay"],
+            embedding=config["embedding"],
+            value_min=train_dataset.value_min,
+            value_max=train_dataset.value_max,
+        )
+        test_dataset = ConcatDataset([valid_dataset, heldout_test_dataset])
     else:
         raise ValueError(f"Unknown dataset: {name}")
 
@@ -327,7 +529,16 @@ def train(
     set_seed(seed)
 
     # Get config
-    config = MNIST_CONFIG.copy() if dataset.lower() == "mnist" else CIFAR10_CONFIG.copy()
+    dataset_name = dataset.lower()
+    if dataset_name == "mnist":
+        config = MNIST_CONFIG.copy()
+    elif dataset_name in ["cifar10", "cifar"]:
+        config = CIFAR10_CONFIG.copy()
+    elif dataset_name == "glucose":
+        config = GLUCOSE_CONFIG.copy()
+        config["img_size"] = config["embedding"]
+    else:
+        raise ValueError(f"Unsupported dataset: {dataset}")
     config["dataset"] = dataset
 
     # Setup device
@@ -339,7 +550,12 @@ def train(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     # Load dataset
-    train_dataset, test_dataset = get_dataset(dataset, root=data_root, download=download)
+    train_dataset, test_dataset = get_dataset(
+        dataset,
+        root=data_root,
+        download=download,
+        config=config,
+    )
     train_loader = DataLoader(
         train_dataset,
         batch_size=256,
@@ -623,8 +839,38 @@ def main():
         default=10,
         help="Sample generation interval (epochs)",
     )
+    parser.add_argument(
+        "--glucose_window_size",
+        type=int,
+        default=GLUCOSE_CONFIG["window_size"],
+        help="Sliding window length for the Glucose dataset",
+    )
+    parser.add_argument(
+        "--glucose_window_stride",
+        type=int,
+        default=GLUCOSE_CONFIG["window_stride"],
+        help="Sliding window stride for the Glucose dataset",
+    )
+    parser.add_argument(
+        "--glucose_delay",
+        type=int,
+        default=GLUCOSE_CONFIG["delay"],
+        help="Delay parameter for Glucose delay embedding",
+    )
+    parser.add_argument(
+        "--glucose_embedding",
+        type=int,
+        default=GLUCOSE_CONFIG["embedding"],
+        help="Embedding size for Glucose delay embedding",
+    )
 
     args = parser.parse_args()
+
+    GLUCOSE_CONFIG["window_size"] = args.glucose_window_size
+    GLUCOSE_CONFIG["window_stride"] = args.glucose_window_stride
+    GLUCOSE_CONFIG["delay"] = args.glucose_delay
+    GLUCOSE_CONFIG["embedding"] = args.glucose_embedding
+    GLUCOSE_CONFIG["img_size"] = args.glucose_embedding
 
     train(
         dataset=args.dataset,
