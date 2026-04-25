@@ -812,7 +812,7 @@ def generate_samples(
     labels = torch.zeros(num_samples, device=device, dtype=torch.long)
     alpha_tensor = torch.full((num_samples,), alpha, device=device)
     samples = model(noise, labels, alpha_tensor)
-    samples = samples.clamp(-1, 1)
+    # samples = samples.clamp(-1, 1)
 
     dataset_name = str(config.get("dataset", "")).lower()
 

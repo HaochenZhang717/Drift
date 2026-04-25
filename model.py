@@ -505,7 +505,7 @@ class DriftDiT(nn.Module):
         x = self.final_layer(x, c)
         x = self.unpatchify(x)
 
-        return x
+        return torch.tanh(x)
 
     def forward_with_cfg(
         self,

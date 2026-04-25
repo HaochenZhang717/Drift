@@ -8,6 +8,7 @@ import matplotlib
 matplotlib.use("Agg")
 import pandas as pd
 import matplotlib.pyplot as plt
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -106,6 +107,10 @@ class GlucoseSlidingWindowDataset(Dataset):
 
         normalize=True,
 
+        value_min=None,
+
+        value_max=None,
+
     ):
 
         self.df = pd.read_parquet(parquet_path)
@@ -117,6 +122,13 @@ class GlucoseSlidingWindowDataset(Dataset):
         self.stride = stride
 
         self.normalize = normalize
+
+        self.value_min = value_min
+
+        self.value_max = value_max
+
+        if self.normalize and (self.value_min is None or self.value_max is None):
+            self.value_min, self.value_max = self._compute_min_max(self.df["glucose"])
 
         self.windows = []  # (row_idx, start_idx)
 
@@ -138,12 +150,41 @@ class GlucoseSlidingWindowDataset(Dataset):
 
         return len(self.windows)
 
+    @staticmethod
+    def _compute_min_max(series):
+
+        mins = []
+
+        maxs = []
+
+        for values in series:
+
+            arr = np.asarray(values, dtype=np.float32)
+
+            arr = arr[np.isfinite(arr)]
+
+            if arr.size == 0:
+
+                continue
+
+            mins.append(float(arr.min()))
+
+            maxs.append(float(arr.max()))
+
+        if not mins:
+
+            raise ValueError("Could not compute glucose min/max from parquet data")
+
+        return min(mins), max(maxs)
+
     def _process_ts(self, ts):
 
         ts = torch.tensor(ts, dtype=torch.float32)
 
         if self.normalize:
-            ts = normalize_ts_to_unit_range(ts)
+            scale = max(float(self.value_max) - float(self.value_min), 1e-6)
+            ts = 2.0 * (ts - float(self.value_min)) / scale - 1.0
+            ts = torch.clamp(ts, -1.0, 1.0)
 
         return ts.unsqueeze(-1)  # (T,1)
 
@@ -235,6 +276,8 @@ def get_dataset(
             embedder=embedder,
             seq_len=config["ts_seq_len"],
             stride=stride,
+            value_min=train_dataset.value_min,
+            value_max=train_dataset.value_max,
         )
 
         print("{} train and {} test datasets".format(len(train_dataset), len(test_dataset)))
@@ -265,4 +308,3 @@ def get_dataset(
         raise ValueError(f"Unknown dataset: {name}. Use one of: sine, mnist, cifar10")
 
     return train_dataset, test_dataset
-
