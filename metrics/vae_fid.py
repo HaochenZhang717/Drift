@@ -35,6 +35,7 @@ _DATASET_TO_CKPT_DIR = {
     "istanbul_traffic": "vae_istanbul_traffic",
     "Weather": "vae_weather",
     "weather": "vae_weather",
+    "glucose": "vae_glucose",
 }
 
 

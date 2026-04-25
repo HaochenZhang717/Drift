@@ -30,6 +30,7 @@ EVAL_STEP_INTERVAL="${EVAL_STEP_INTERVAL:-0}"
 EVAL_METRICS="${EVAL_METRICS:-disc}"
 EVAL_NUM_SAMPLES="${EVAL_NUM_SAMPLES:-1000}"
 METRIC_ITERATION="${METRIC_ITERATION:-1}"
+VAE_CKPT_ROOT="${VAE_CKPT_ROOT:-./fid_vae_ckpts}"
 
 echo "Starting glucose unconditional training..."
 echo "Experiment: ${EXP_NAME}"
@@ -52,6 +53,7 @@ CUDA_VISIBLE_DEVICES="${GPU_ID}" python train_ts_unconditional.py \
     --eval_step_interval "${EVAL_STEP_INTERVAL}" \
     --eval_metrics "${EVAL_METRICS}" \
     --eval_num_samples "${EVAL_NUM_SAMPLES}" \
-    --metric_iteration "${METRIC_ITERATION}"
+    --metric_iteration "${METRIC_ITERATION}" \
+    --vae_ckpt_root "${VAE_CKPT_ROOT}"
 
 echo "Training finished!"
