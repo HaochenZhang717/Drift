@@ -5,10 +5,11 @@ set -euo pipefail
 # Basic config
 # =========================
 
-GPU_ID="${GPU_ID:-0}"
+GPU_ID="${GPU_ID:-${CUDA_VISIBLE_DEVICES:-0}}"
 EXP_NAME="${EXP_NAME:-glucose_ts_unconditional}"
 DATA_ROOT="${DATA_ROOT:-./AI-READI}"
 OUTPUT_DIR="${OUTPUT_DIR:-./outputs/${EXP_NAME}}"
+PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
 
 # =========================
 # Runtime config
@@ -40,7 +41,10 @@ echo "Output dir: ${OUTPUT_DIR}"
 
 mkdir -p "${OUTPUT_DIR}"
 
-CUDA_VISIBLE_DEVICES="${GPU_ID}" python train_ts_unconditional.py \
+export CUDA_VISIBLE_DEVICES="${GPU_ID}"
+export PYTORCH_ALLOC_CONF
+
+python train_ts_unconditional.py \
     --dataset glucose \
     --data_root "${DATA_ROOT}" \
     --output_dir "${OUTPUT_DIR}" \
@@ -54,6 +58,9 @@ CUDA_VISIBLE_DEVICES="${GPU_ID}" python train_ts_unconditional.py \
     --eval_metrics "${EVAL_METRICS}" \
     --eval_num_samples "${EVAL_NUM_SAMPLES}" \
     --metric_iteration "${METRIC_ITERATION}" \
-    --vae_ckpt_root "${VAE_CKPT_ROOT}"
+    --vae_ckpt_root "${VAE_CKPT_ROOT}" \
+    --wandb \
+    --wandb_project drifting-model-ts \
+    --wandb_run_name glucose_ts_unconditional
 
 echo "Training finished!"
