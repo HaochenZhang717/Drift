@@ -6,7 +6,7 @@
 
 # 数据路径（改成你的）
 TRAIN_PATH="./data/glucose/train_ts.npy"
-VAL_PATH="./data/glucose/valid_ts.npy"
+VAL_PATH="./data/glucose/test_ts.npy"
 
 # 保存目录
 EXP_NAME="vae_glucose"
