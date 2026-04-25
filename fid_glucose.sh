@@ -5,12 +5,12 @@
 # =========================
 
 # 数据路径（改成你的）
-TRAIN_PATH="../data/glucose/train_ts.npy"
-VAL_PATH="../data/glucose/valid_ts.npy"
+TRAIN_PATH="./data/glucose/train_ts.npy"
+VAL_PATH="./data/glucose/valid_ts.npy"
 
 # 保存目录
 EXP_NAME="vae_glucose"
-SAVE_DIR="../fid_vae_ckpts/${EXP_NAME}"
+SAVE_DIR="./fid_vae_ckpts/${EXP_NAME}"
 
 mkdir -p ${SAVE_DIR}
 
@@ -19,7 +19,7 @@ mkdir -p ${SAVE_DIR}
 # =========================
 
 BATCH_SIZE=128
-EPOCHS=200
+EPOCHS=100
 LR=8e-4
 
 HIDDEN_SIZE=128
