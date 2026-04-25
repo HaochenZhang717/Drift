@@ -215,6 +215,7 @@ def get_dataset(
             seed=seed + 1_000_000,
         )
     elif name == "glucose":
+        stride = config.get("ts_stride", 128)
         embedder = DelayEmbedder(
             device=torch.device("cpu"),
             seq_len=config["ts_seq_len"],
@@ -223,17 +224,17 @@ def get_dataset(
         )
 
         train_dataset = GlucoseSlidingWindowDataset(
-            parquet_path="./AI-READI/glucose_train.parquet",
+            parquet_path=os.path.join(root, "glucose_train.parquet"),
             embedder=embedder,
             seq_len=config["ts_seq_len"],
-            stride=128,
+            stride=stride,
         )
 
         test_dataset = GlucoseSlidingWindowDataset(
-            parquet_path="./AI-READI/glucose_test.parquet",
+            parquet_path=os.path.join(root, "glucose_test.parquet"),
             embedder=embedder,
             seq_len=config["ts_seq_len"],
-            stride=128,
+            stride=stride,
         )
 
         print("{} train and {} test datasets".format(len(train_dataset), len(test_dataset)))
@@ -264,5 +265,4 @@ def get_dataset(
         raise ValueError(f"Unknown dataset: {name}. Use one of: sine, mnist, cifar10")
 
     return train_dataset, test_dataset
-
 

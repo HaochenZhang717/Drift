@@ -41,6 +41,7 @@ if __name__ == "__main__":
     train_dataset, test_dataset = get_dataset(
         "glucose",
         config=config,
+        root="./AI-READI"
     )
 
     save_glucose_ts_as_npy(train_dataset, "./data/glucose/train_ts.npy")

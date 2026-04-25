@@ -112,6 +112,7 @@ TS_GLUCOSE_CONFIG = {
     "ts_seq_len": 128,  # Gives exactly 32 delay columns for delay=1, embedding=32
     "ts_delay": 8,
     "ts_embedding": 16,
+    "ts_stride": 128,
 }
 
 
@@ -954,8 +955,15 @@ def main():
         default=None,
         help="Checkpoint root for vaeFID",
     )
+    parser.add_argument(
+        "--glucose_stride",
+        type=int,
+        default=TS_GLUCOSE_CONFIG["ts_stride"],
+        help="Sliding-window stride for the Glucose dataset",
+    )
 
     args = parser.parse_args()
+    TS_GLUCOSE_CONFIG["ts_stride"] = args.glucose_stride
 
     train(
         dataset=args.dataset,
