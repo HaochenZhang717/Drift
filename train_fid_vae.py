@@ -2,7 +2,7 @@ import os
 import argparse
 import numpy as np
 import torch
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, TensorDataset
 from tqdm import tqdm
 
@@ -39,7 +39,7 @@ def get_args():
     # ===== misc =====
     parser.add_argument("--save_dir", type=str, default="./vae_ckpts")
     parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--scale", action="store_true", help="Fit a StandardScaler on train data and apply it to all splits.")
+    parser.add_argument("--scale", action="store_true", help="Fit a MinMaxScaler on train data and scale all splits to [-1, 1].")
 
     return parser.parse_args()
 
@@ -60,7 +60,7 @@ def _load_numpy_series(npy_path):
 
 
 def fit_scaler(train_data):
-    scaler = StandardScaler()
+    scaler = MinMaxScaler(feature_range=(-1, 1))
     scaler.fit(train_data.reshape(-1, train_data.shape[-1]))
     return scaler
 
@@ -201,9 +201,12 @@ def train(args):
     if scaler is not None:
         np.savez(
             os.path.join(args.save_dir, "scaler_stats.npz"),
-            mean=scaler.mean_.astype(np.float32),
+            data_min=scaler.data_min_.astype(np.float32),
+            data_max=scaler.data_max_.astype(np.float32),
+            data_range=scaler.data_range_.astype(np.float32),
             scale=scaler.scale_.astype(np.float32),
-            var=scaler.var_.astype(np.float32),
+            min=scaler.min_.astype(np.float32),
+            feature_range=np.array(scaler.feature_range, dtype=np.float32),
         )
 
     best_val_loss = float("inf")
