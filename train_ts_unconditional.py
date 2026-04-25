@@ -3,10 +3,6 @@ Training script for Drifting Models with unconditional generation.
 Includes a synthetic sine-wave time-series dataset that is transformed to images
 via delay embedding for DiT training.
 """
-
-
-
-
 import argparse
 import math
 import os
@@ -20,16 +16,19 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
+
+
+from utils.utils_dataset import get_dataset
+
 from torchvision import datasets, transforms
 from model import DriftDiT_Tiny, DriftDiT_Small, DriftDiT_models
-from img_transformations import DelayEmbedder
 from drifting import (
     compute_V,
     normalize_features,
     normalize_drift,
 )
 from feature_encoder import create_feature_encoder, pretrain_mae
-from utils import (
+from utils.utils_drift import (
     EMA,
     WarmupLRScheduler,
     SampleQueue,
@@ -40,42 +39,20 @@ from utils import (
     set_seed,
 )
 import pandas as pd
+from ts_quality_eval import (
+    delay_images_to_series,
+    evaluate_time_series_metrics,
+    parse_metric_names,
+)
+
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 
-def normalize_ts_to_unit_range(ts: torch.Tensor) -> torch.Tensor:
-    """
-    Normalize a 1D time series to [-1, 1] with per-series min-max scaling.
-    """
-    ts_min = ts.min()
-    ts_max = ts.max()
-    scale = ts_max - ts_min
-    if scale < 1e-6:
-        return torch.zeros_like(ts)
-    return 2.0 * (ts - ts_min) / scale - 1.0
 
 # Default hyperparameters
-MNIST_CONFIG = {
-    "model": "DriftDiT-Tiny",
-    "img_size": 32,
-    "in_channels": 1,
-    "num_classes": 1,
-    "batch_nc": 1,  # Number of classes per batch
-    "batch_n_pos": 320,  # Positive samples per class
-    "batch_n_neg": 320,  # Negative samples per class
-    "temperatures": [0.02, 0.05, 0.2],
-    "lr": 2e-4,
-    "weight_decay": 0.01,
-    "grad_clip": 2.0,
-    "ema_decay": 0.999,
-    "warmup_steps": 1000,
-    "epochs": 100,
-    "alpha_min": 1.0,
-    "alpha_max": 1.0,
-    "use_feature_encoder": False,  # Pixel space for MNIST
-    "queue_size": 1280,
-    "label_dropout": 0.1,
-}
-
 TS_SINE_CONFIG = {
     "model": "DriftDiT-Tiny",
     "img_size": 16,  # Must match delay embedding size
@@ -111,8 +88,6 @@ TS_SINE_CONFIG = {
     "ts_noise_std": 0.03,
 }
 
-
-
 TS_GLUCOSE_CONFIG = {
     "model": "DriftDiT-Tiny",
     "img_size": 16,  # Must match delay embedding size
@@ -141,245 +116,6 @@ TS_GLUCOSE_CONFIG = {
 
 
 
-class SyntheticSineDataset(Dataset):
-    """Synthetic sine-wave time series, transformed to images with DelayEmbedder."""
-
-    def __init__(
-        self,
-        num_samples: int,
-        embedder: DelayEmbedder,
-        seq_len: int,
-        components_min: int,
-        components_max: int,
-        freq_min: float,
-        freq_max: float,
-        amp_min: float,
-        amp_max: float,
-        noise_std: float,
-        seed: int = 42,
-    ):
-        self.num_samples = num_samples
-        self.embedder = embedder
-        self.seq_len = seq_len
-        self.components_min = components_min
-        self.components_max = components_max
-        self.freq_min = freq_min
-        self.freq_max = freq_max
-        self.amp_min = amp_min
-        self.amp_max = amp_max
-        self.noise_std = noise_std
-        self.seed = seed
-
-    def __len__(self) -> int:
-        return self.num_samples
-
-    def _make_signal(self, idx: int) -> torch.Tensor:
-        g = torch.Generator().manual_seed(self.seed + idx)
-        t = torch.linspace(0.0, 1.0, self.seq_len, dtype=torch.float32)
-        signal = torch.zeros_like(t)
-
-        n_components = int(
-            torch.randint(
-                low=self.components_min,
-                high=self.components_max + 1,
-                size=(1,),
-                generator=g,
-            ).item()
-        )
-
-        for _ in range(n_components):
-            amp = torch.empty(1).uniform_(self.amp_min, self.amp_max, generator=g).item()
-            freq = torch.empty(1).uniform_(self.freq_min, self.freq_max, generator=g).item()
-            phase = torch.empty(1).uniform_(0.0, 2.0 * math.pi, generator=g).item()
-            signal = signal + amp * torch.sin(2.0 * math.pi * freq * t + phase)
-
-        if self.noise_std > 0:
-            signal = signal + torch.randn(self.seq_len, generator=g) * self.noise_std
-        signal = normalize_ts_to_unit_range(signal)
-        return signal.unsqueeze(-1)  # (seq_len, 1)
-
-    def __getitem__(self, idx: int) -> tuple:
-        ts = self._make_signal(idx)
-        img = self.embedder.ts_to_img(ts.unsqueeze(0), pad=True, mask=0.0).squeeze(0)
-        label = torch.tensor(0, dtype=torch.long)
-        return img, label
-
-
-
-class GlucoseSlidingWindowDataset(Dataset):
-
-    def __init__(
-
-        self,
-
-        parquet_path,
-
-        embedder,
-
-        seq_len=128,
-
-        stride=1,
-
-        normalize=True,
-
-    ):
-
-        self.df = pd.read_parquet(parquet_path)
-
-        self.embedder = embedder
-
-        self.seq_len = seq_len
-
-        self.stride = stride
-
-        self.normalize = normalize
-
-        self.windows = []  # (row_idx, start_idx)
-
-        # 预计算所有 window 索引（关键）
-
-        for row_idx, ts in enumerate(self.df["glucose"]):
-
-            L = len(ts)
-
-            if L < seq_len:
-
-                continue
-
-            for start in range(0, L - seq_len + 1, stride):
-
-                self.windows.append((row_idx, start))
-
-    def __len__(self):
-
-        return len(self.windows)
-
-    def _process_ts(self, ts):
-
-        ts = torch.tensor(ts, dtype=torch.float32)
-
-        if self.normalize:
-            ts = normalize_ts_to_unit_range(ts)
-
-        return ts.unsqueeze(-1)  # (T,1)
-
-    def __getitem__(self, idx):
-
-        row_idx, start = self.windows[idx]
-
-        full_ts = self.df["glucose"].iloc[row_idx]
-
-        window = full_ts[start : start + self.seq_len]
-
-        ts = self._process_ts(window)
-
-        img = self.embedder.ts_to_img(
-
-            ts.unsqueeze(0),  # (1,T,1)
-
-            pad=True,
-
-            mask=0.0,
-
-        ).squeeze(0)
-
-        label = torch.tensor(0, dtype=torch.long)
-
-        return img, label
-
-
-def get_dataset(
-    name: str,
-    config: dict,
-    root: str = "./data",
-    download: bool = True,
-    seed: int = 42,
-) -> tuple:
-    """Get dataset and transforms."""
-    name = name.lower()
-    if name in ["sine", "ts", "timeseries", "synthetic_sine"]:
-        embedder = DelayEmbedder(
-            device=torch.device("cpu"),
-            seq_len=config["ts_seq_len"],
-            delay=config["ts_delay"],
-            embedding=config["ts_embedding"],
-        )
-        train_dataset = SyntheticSineDataset(
-            num_samples=config["ts_num_samples_train"],
-            embedder=embedder,
-            seq_len=config["ts_seq_len"],
-            components_min=config["ts_components_min"],
-            components_max=config["ts_components_max"],
-            freq_min=config["ts_freq_min"],
-            freq_max=config["ts_freq_max"],
-            amp_min=config["ts_amp_min"],
-            amp_max=config["ts_amp_max"],
-            noise_std=config["ts_noise_std"],
-            seed=seed,
-        )
-        test_dataset = SyntheticSineDataset(
-            num_samples=config["ts_num_samples_test"],
-            embedder=embedder,
-            seq_len=config["ts_seq_len"],
-            components_min=config["ts_components_min"],
-            components_max=config["ts_components_max"],
-            freq_min=config["ts_freq_min"],
-            freq_max=config["ts_freq_max"],
-            amp_min=config["ts_amp_min"],
-            amp_max=config["ts_amp_max"],
-            noise_std=config["ts_noise_std"],
-            seed=seed + 1_000_000,
-        )
-    elif name == "glucose":
-        embedder = DelayEmbedder(
-            device=torch.device("cpu"),
-            seq_len=config["ts_seq_len"],
-            delay=config["ts_delay"],
-            embedding=config["ts_embedding"],
-        )
-
-        train_dataset = GlucoseSlidingWindowDataset(
-            parquet_path="./AI-READI/glucose_train.parquet",
-            embedder=embedder,
-            seq_len=config["ts_seq_len"],
-            stride=128,
-        )
-
-        test_dataset = GlucoseSlidingWindowDataset(
-            parquet_path="./AI-READI/glucose_test.parquet",
-            embedder=embedder,
-            seq_len=config["ts_seq_len"],
-            stride=128,
-        )
-
-        print("{} train and {} test datasets".format(len(train_dataset), len(test_dataset)))
-
-    elif name == "mnist":
-        # MNIST data will be at {root}/mnist/MNIST/raw/
-        mnist_root = os.path.join(root, "mnist")
-        transform = transforms.Compose([
-            transforms.Resize(32),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5], [0.5]),  # [-1, 1]
-        ])
-        train_dataset = datasets.MNIST(mnist_root, train=True, download=download, transform=transform)
-        test_dataset = datasets.MNIST(mnist_root, train=False, download=download, transform=transform)
-    elif name in ["cifar10", "cifar"]:
-        transform = transforms.Compose([
-            transforms.RandomHorizontalFlip(),
-            transforms.ToTensor(),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-        ])
-        test_transform = transforms.Compose([
-            transforms.ToTensor(),
-            transforms.Normalize([0.5, 0.5, 0.5], [0.5, 0.5, 0.5]),
-        ])
-        train_dataset = datasets.CIFAR10(root, train=True, download=download, transform=transform)
-        test_dataset = datasets.CIFAR10(root, train=False, download=download, transform=test_transform)
-    else:
-        raise ValueError(f"Unknown dataset: {name}. Use one of: sine, mnist, cifar10")
-
-    return train_dataset, test_dataset
 
 
 def sample_batch(
@@ -442,6 +178,10 @@ def build_delay_embedding_mask(config: dict, device: torch.device) -> Optional[t
             mask[:, :, :valid_rows, col] = 1.0
 
     return mask
+
+
+def is_time_series_dataset(dataset: str) -> bool:
+    return dataset.lower() in ["sine", "ts", "timeseries", "synthetic_sine", "glucose"]
 
 
 def masked_global_avg_pool2d(
@@ -681,10 +421,21 @@ def train(
     download: bool = True,
     resume: Optional[str] = None,
     seed: int = 42,
-    num_workers: int = 4,
+    num_workers: int = 1,
     log_interval: int = 1,
     save_interval: int = 10,
     sample_interval: int = 10,
+    eval_step_interval: int = 500,
+    eval_metrics: str = "disc",
+    eval_num_samples: Optional[int] = None,
+    metric_iteration: int = 1,
+    wandb_enabled: bool = False,
+    wandb_project: str = "drifting-model-ts",
+    wandb_run_name: Optional[str] = None,
+    wandb_entity: Optional[str] = None,
+    wandb_mode: Optional[str] = None,
+    metrics_base_path: Optional[str] = None,
+    vae_ckpt_root: Optional[str] = None,
 ):
     """Main training function."""
     set_seed(seed)
@@ -693,14 +444,17 @@ def train(
     dataset_name = dataset.lower()
     if dataset_name in ["sine", "ts", "timeseries", "synthetic_sine"]:
         config = TS_SINE_CONFIG.copy()
-    elif dataset_name == "mnist":
-        config = MNIST_CONFIG.copy()
     elif dataset_name == "glucose":
         config = TS_GLUCOSE_CONFIG.copy()
-
     else:
         raise ValueError(f"Unsupported dataset for this script: {dataset}")
     config["dataset"] = dataset
+    metric_names = parse_metric_names(eval_metrics)
+    metric_iteration = max(1, metric_iteration)
+    config["eval_metrics"] = metric_names
+    config["eval_step_interval"] = eval_step_interval
+    config["eval_num_samples"] = eval_num_samples
+    config["metric_iteration"] = metric_iteration
 
     # Setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -710,6 +464,20 @@ def train(
     output_dir = Path(output_dir) / dataset
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    wandb_run = None
+    if wandb_enabled:
+        if wandb is None:
+            print("wandb is not installed; continuing without wandb logging.")
+        else:
+            wandb_run = wandb.init(
+                project=wandb_project,
+                entity=wandb_entity,
+                name=wandb_run_name,
+                mode=wandb_mode,
+                config=config,
+                dir=str(output_dir),
+            )
+
     # Load dataset
     train_dataset, test_dataset = get_dataset(
         dataset,
@@ -718,6 +486,7 @@ def train(
         download=download,
         seed=seed,
     )
+    print(f"Dataset sizes | train: {len(train_dataset)} | test: {len(test_dataset)}")
     train_loader = DataLoader(
         train_dataset,
         batch_size=256,
@@ -852,6 +621,17 @@ def train(
                     f"Grad: {info['grad_norm']:.4f} | "
                     f"LR: {lr:.6f}"
                 )
+                if wandb_run is not None:
+                    wandb.log(
+                        {
+                            "train/loss": info["loss"],
+                            "train/drift_norm": info["drift_norm"],
+                            "train/grad_norm": info["grad_norm"],
+                            "train/lr": lr,
+                            "train/epoch": epoch + 1,
+                        },
+                        step=global_step,
+                    )
 
             # Generate samples every 500 steps for quick visualization
             if global_step % 500 == 0:
@@ -864,6 +644,47 @@ def train(
                     num_samples=80,
                 )
                 print(f"Saved samples to {sample_path}")
+                if wandb_run is not None:
+                    wandb.log(
+                        {"samples/step": wandb.Image(str(sample_path))},
+                        step=global_step,
+                    )
+
+                if (
+                    metric_names
+                    and is_time_series_dataset(dataset_name)
+                    and eval_step_interval > 0
+                    and global_step % eval_step_interval == 0
+                ):
+                    try:
+                        metric_output_dir = output_dir / "metric_samples"
+                        metric_results = evaluate_time_series_metrics(
+                            ema.shadow,
+                            test_dataset,
+                            config,
+                            device,
+                            eval_metrics=metric_names,
+                            num_samples=eval_num_samples,
+                            metric_iteration=metric_iteration,
+                            num_workers=num_workers,
+                            base_path=metrics_base_path,
+                            vae_ckpt_root=vae_ckpt_root,
+                            output_dir=metric_output_dir,
+                            step=global_step,
+                        )
+                        metric_str = " | ".join(
+                            f"{key}: {value:.4f}" for key, value in metric_results.items()
+                        )
+                        print(f"Metrics step {global_step} | {metric_str}")
+                        if wandb_run is not None:
+                            wandb.log(metric_results, step=global_step)
+                    except Exception as exc:
+                        print(f"Metric evaluation failed at step {global_step}: {exc}")
+                        if wandb_run is not None:
+                            wandb.log(
+                                {"metric/eval_failed": 1, "metric/eval_error": str(exc)},
+                                step=global_step,
+                            )
 
         # Epoch summary
         epoch_time = time.time() - epoch_start
@@ -874,6 +695,15 @@ def train(
             f"Avg Loss: {avg_loss:.4f} | "
             f"Avg Drift Norm: {avg_drift:.4f}\n"
         )
+        if wandb_run is not None:
+            wandb.log(
+                {
+                    "epoch/loss": avg_loss,
+                    "epoch/drift_norm": avg_drift,
+                    "epoch/time_sec": epoch_time,
+                },
+                step=global_step,
+            )
 
         # Save checkpoint
         if (epoch + 1) % save_interval == 0:
@@ -901,6 +731,11 @@ def train(
                 num_samples=80,
             )
             print(f"Saved samples to {sample_path}")
+            if wandb_run is not None:
+                wandb.log(
+                    {"samples/epoch": wandb.Image(str(sample_path))},
+                    step=global_step,
+                )
 
     # Final checkpoint
     final_path = output_dir / "checkpoint_final.pt"
@@ -915,6 +750,8 @@ def train(
         config,
     )
     print(f"Training complete! Final checkpoint saved to {final_path}")
+    if wandb_run is not None:
+        wandb.finish()
 
 
 def save_time_series_grid(
@@ -977,19 +814,14 @@ def generate_samples(
     samples = samples.clamp(-1, 1)
 
     dataset_name = str(config.get("dataset", "")).lower()
-    is_ts_dataset = dataset_name in ["sine", "ts", "timeseries", "synthetic_sine"]
 
-    if is_ts_dataset:
-        seq_len = config["ts_seq_len"]
-        delay = config["ts_delay"]
-        embedding = config["ts_embedding"]
-        embedder = DelayEmbedder(device=device, seq_len=seq_len, delay=delay, embedding=embedding)
-        # For generated images we know the unpadded shape is embedding x embedding.
-        embedder.img_shape = (num_samples, in_channels, embedding, embedding)
-        series = embedder.img_to_ts(samples)
+    if is_time_series_dataset(dataset_name):
+        series = delay_images_to_series(samples, config, device)
         save_time_series_grid(series, save_path, ncol=8)  # 10 x 8 for 80 samples
     else:
         save_image_grid(samples, save_path, nrow=8)
+
+    return samples
 
 
 def main():
@@ -1033,7 +865,7 @@ def main():
     parser.add_argument(
         "--num_workers",
         type=int,
-        default=4,
+        default=1,
         help="Number of data loading workers",
     )
     parser.add_argument(
@@ -1054,6 +886,74 @@ def main():
         default=10,
         help="Sample generation interval (epochs)",
     )
+    parser.add_argument(
+        "--eval_step_interval",
+        "--eval_interval",
+        dest="eval_step_interval",
+        type=int,
+        default=500,
+        help="Metric evaluation interval in training steps. Set <= 0 to disable.",
+    )
+    parser.add_argument(
+        "--eval_metrics",
+        type=str,
+        default="disc",
+        help="Comma-separated metrics to run: disc,pred,contextFID,vaeFID",
+    )
+    parser.add_argument(
+        "--eval_num_samples",
+        type=int,
+        default=None,
+        help="Number of real/generated samples for metrics. Defaults to the full test set.",
+    )
+    parser.add_argument(
+        "--metric_iteration",
+        type=int,
+        default=1,
+        help="Number of repeated metric runs for mean/std metrics",
+    )
+    parser.add_argument(
+        "--wandb",
+        action="store_true",
+        help="Enable Weights & Biases logging",
+    )
+    parser.add_argument(
+        "--wandb_project",
+        type=str,
+        default="drifting-model-ts",
+        help="Weights & Biases project name",
+    )
+    parser.add_argument(
+        "--wandb_run_name",
+        type=str,
+        default=None,
+        help="Weights & Biases run name",
+    )
+    parser.add_argument(
+        "--wandb_entity",
+        type=str,
+        default=None,
+        help="Weights & Biases entity",
+    )
+    parser.add_argument(
+        "--wandb_mode",
+        type=str,
+        default=None,
+        choices=[None, "online", "offline", "disabled"],
+        help="Weights & Biases mode",
+    )
+    parser.add_argument(
+        "--metrics_base_path",
+        type=str,
+        default=None,
+        help="Base path for cached metric checkpoints/representations",
+    )
+    parser.add_argument(
+        "--vae_ckpt_root",
+        type=str,
+        default=None,
+        help="Checkpoint root for vaeFID",
+    )
 
     args = parser.parse_args()
 
@@ -1068,6 +968,17 @@ def main():
         log_interval=args.log_interval,
         save_interval=args.save_interval,
         sample_interval=args.sample_interval,
+        eval_step_interval=args.eval_step_interval,
+        eval_metrics=args.eval_metrics,
+        eval_num_samples=args.eval_num_samples,
+        metric_iteration=args.metric_iteration,
+        wandb_enabled=args.wandb,
+        wandb_project=args.wandb_project,
+        wandb_run_name=args.wandb_run_name,
+        wandb_entity=args.wandb_entity,
+        wandb_mode=args.wandb_mode,
+        metrics_base_path=args.metrics_base_path,
+        vae_ckpt_root=args.vae_ckpt_root,
     )
 
 
