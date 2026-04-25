@@ -194,7 +194,7 @@ def train(args):
         beta=args.beta,
     ).to(device)
 
-    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.001)
 
     os.makedirs(args.save_dir, exist_ok=True)
 
