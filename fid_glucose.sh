@@ -46,6 +46,7 @@ python train_fid_vae.py \
     --num_heads ${NUM_HEADS} \
     --latent_dim ${LATENT_DIM} \
     --beta ${BETA} \
-    --save_dir ${SAVE_DIR}
+    --save_dir ${SAVE_DIR} \
+    --scale
 
 echo "Training finished!"
