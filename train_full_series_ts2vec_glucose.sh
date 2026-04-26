@@ -40,7 +40,7 @@ export CUDA_VISIBLE_DEVICES="${GPU_ID}"
 
 CMD=(
 python train_full_series_ts2vec_glucose.py
-  --device cuda
+  --device "cuda:0"
   --data_root "${DATA_ROOT}"
   --output_dir "${OUTPUT_DIR}"
   --seq_len "${SEQ_LEN}"
