@@ -6,7 +6,7 @@ DATA_ROOT="${DATA_ROOT:-./AI-READI}"
 OUTPUT_DIR="${OUTPUT_DIR:-./feature_extractors/checkpoints/full_series_ts2vec_glucose}"
 
 SEQ_LEN="${SEQ_LEN:-128}"
-STRIDE="${STRIDE:-8}"
+STRIDE="${STRIDE:-32}"
 BATCH_SIZE="${BATCH_SIZE:-1024}"
 EPOCHS="${EPOCHS:-1000}"
 LR="${LR:-5e-4}"
