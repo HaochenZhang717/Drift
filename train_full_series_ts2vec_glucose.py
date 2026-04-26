@@ -173,8 +173,6 @@ def main() -> None:
     parser.add_argument("--seq_len", type=int, default=128)
     parser.add_argument("--stride", type=int, default=32)
     parser.add_argument("--normalize", type=str, default="minmax", choices=["minmax", "none"])
-    parser.add_argument("--max_train_windows", type=int, default=None)
-    parser.add_argument("--max_valid_windows", type=int, default=4096)
 
     parser.add_argument("--output_dims", type=int, default=320)
     parser.add_argument("--hidden_dims", type=int, default=64)
@@ -245,7 +243,7 @@ def main() -> None:
         value_min=value_min,
         value_max=value_max,
         normalize=args.normalize,
-        max_windows=args.max_train_windows,
+        max_windows=None,
     )
     print(f"Train data: {train_data.shape}")
 
@@ -258,7 +256,7 @@ def main() -> None:
         value_min=value_min,
         value_max=value_max,
         normalize=args.normalize,
-        max_windows=args.max_valid_windows,
+        max_windows=None,
     )
     print(f"Valid data: {valid_data.shape}")
 
@@ -438,9 +436,9 @@ def main() -> None:
         if args.iters is not None and global_step >= args.iters:
             break
 
-    np.save(output_dir / "loss_log.npy", np.asarray(loss_log, dtype=np.float32))
-    if val_loss_log:
-        np.save(output_dir / "val_loss_log.npy", np.asarray(val_loss_log, dtype=np.float32))
+    # np.save(output_dir / "loss_log.npy", np.asarray(loss_log, dtype=np.float32))
+    # if val_loss_log:
+    #     np.save(output_dir / "val_loss_log.npy", np.asarray(val_loss_log, dtype=np.float32))
 
     ckpt_path = output_dir / "full_series_ts2vec_glucose.pt"
     torch.save(

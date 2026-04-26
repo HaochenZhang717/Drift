@@ -25,7 +25,6 @@ MASK_PROB="${MASK_PROB:-0.85}"
 CROP_MIN_RATIO="${CROP_MIN_RATIO:-1.0}"
 CROP_MAX_RATIO="${CROP_MAX_RATIO:-1.0}"
 
-MAX_TRAIN_WINDOWS="${MAX_TRAIN_WINDOWS:-}"
 VAL_REPEATS="${VAL_REPEATS:-1}"
 SAVE_FULL_SERIES_FEATURES="${SAVE_FULL_SERIES_FEATURES:-0}"
 
@@ -57,10 +56,6 @@ python train_full_series_ts2vec_glucose.py
   --crop_max_ratio "${CROP_MAX_RATIO}"
   --val_repeats "${VAL_REPEATS}"
 )
-
-if [[ -n "${MAX_TRAIN_WINDOWS}" ]]; then
-  CMD+=(--max_train_windows "${MAX_TRAIN_WINDOWS}")
-fi
 
 if [[ "${SAVE_FULL_SERIES_FEATURES}" == "1" ]]; then
   CMD+=(--save_full_series_features)
