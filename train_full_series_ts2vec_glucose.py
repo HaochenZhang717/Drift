@@ -20,6 +20,11 @@ from feature_extractors.ts2vec.models.encoder import TSEncoder
 from feature_extractors.ts2vec.utils import init_dl_program
 from train_ts2vec_glucose import compute_min_max, load_glucose_windows
 
+try:
+    import wandb
+except ImportError:
+    wandb = None
+
 
 def full_series_pool(repr_seq: torch.Tensor) -> torch.Tensor:
     """Max-pool [B, T, D] timestamp features into [B, D]."""
@@ -205,6 +210,17 @@ def main() -> None:
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--num_threads", type=int, default=None)
     parser.add_argument("--save_full_series_features", action="store_true")
+    parser.add_argument("--wandb", action="store_true", help="Enable Weights & Biases logging.")
+    parser.add_argument("--wandb_project", type=str, default="drifting-model-ts")
+    parser.add_argument("--wandb_run_name", type=str, default=None)
+    parser.add_argument("--wandb_entity", type=str, default=None)
+    parser.add_argument(
+        "--wandb_mode",
+        type=str,
+        default=None,
+        choices=[None, "online", "offline", "disabled"],
+        help="Weights & Biases mode.",
+    )
     args = parser.parse_args()
 
     data_root = Path(args.data_root)
@@ -307,6 +323,20 @@ def main() -> None:
     }
     save_json(output_dir / "metadata.json", metadata)
 
+    wandb_run = None
+    if args.wandb:
+        if wandb is None:
+            print("wandb is not installed; continuing without wandb logging.")
+        else:
+            wandb_run = wandb.init(
+                project=args.wandb_project,
+                entity=args.wandb_entity,
+                name=args.wandb_run_name,
+                mode=args.wandb_mode,
+                config=metadata,
+                dir=str(output_dir),
+            )
+
     loss_log = []
     val_loss_log = []
     best_val_loss = float("inf")
@@ -382,6 +412,18 @@ def main() -> None:
             f"Epoch #{epoch}: loss={avg_loss:.6f} | "
             f"val_loss={val_loss:.6f} | best_val_loss={best_val_loss:.6f}"
         )
+        if wandb_run is not None:
+            wandb.log(
+                {
+                    "train/loss": avg_loss,
+                    "val/loss": val_loss,
+                    "val/best_loss": best_val_loss,
+                    "val/best_epoch": best_epoch,
+                    "train/epoch": epoch,
+                    "train/global_step": global_step,
+                },
+                step=global_step,
+            )
 
         if args.iters is not None and global_step >= args.iters:
             break
@@ -415,6 +457,14 @@ def main() -> None:
         )
         np.save(output_dir / "valid_full_series_features.npy", features.astype(np.float32))
         print(f"Saved full-series validation features: {features.shape}")
+        if wandb_run is not None:
+            wandb.log(
+                {"features/valid_full_series_count": int(features.shape[0])},
+                step=global_step,
+            )
+
+    if wandb_run is not None:
+        wandb.finish()
 
 
 if __name__ == "__main__":

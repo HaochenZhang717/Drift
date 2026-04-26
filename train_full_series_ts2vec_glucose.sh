@@ -30,6 +30,12 @@ MAX_VALID_WINDOWS="${MAX_VALID_WINDOWS:-4096}"
 VAL_REPEATS="${VAL_REPEATS:-1}"
 SAVE_FULL_SERIES_FEATURES="${SAVE_FULL_SERIES_FEATURES:-0}"
 
+WANDB_ENABLED="${WANDB_ENABLED:-1}"
+WANDB_PROJECT="${WANDB_PROJECT:-drifting-model-ts}"
+WANDB_RUN_NAME="${WANDB_RUN_NAME:-full_series_ts2vec_glucose}"
+WANDB_ENTITY="${WANDB_ENTITY:-}"
+WANDB_MODE="${WANDB_MODE:-online}"
+
 export CUDA_VISIBLE_DEVICES="${GPU_ID}"
 
 CMD=(
@@ -62,6 +68,19 @@ if [[ "${SAVE_FULL_SERIES_FEATURES}" == "1" ]]; then
   CMD+=(--save_full_series_features)
 fi
 
+if [[ "${WANDB_ENABLED}" == "1" ]]; then
+  CMD+=(
+    --wandb
+    --wandb_project "${WANDB_PROJECT}"
+    --wandb_run_name "${WANDB_RUN_NAME}"
+    --wandb_mode "${WANDB_MODE}"
+  )
+
+  if [[ -n "${WANDB_ENTITY}" ]]; then
+    CMD+=(--wandb_entity "${WANDB_ENTITY}")
+  fi
+fi
+
 echo "Training full-series TS2Vec glucose encoder..."
 echo "GPU: ${GPU_ID}"
 echo "Data root: ${DATA_ROOT}"
@@ -69,5 +88,8 @@ echo "Output dir: ${OUTPUT_DIR}"
 echo "Mask keep prob: ${MASK_PROB}"
 echo "Crop ratio: ${CROP_MIN_RATIO}-${CROP_MAX_RATIO}"
 echo "Model: hidden_dims=${HIDDEN_DIMS}, output_dims=${OUTPUT_DIMS}, depth=${DEPTH}"
+echo "W&B enabled: ${WANDB_ENABLED}"
+echo "W&B project: ${WANDB_PROJECT}"
+echo "W&B run: ${WANDB_RUN_NAME}"
 
 "${CMD[@]}"
