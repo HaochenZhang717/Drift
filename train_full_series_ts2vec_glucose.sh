@@ -26,7 +26,6 @@ CROP_MIN_RATIO="${CROP_MIN_RATIO:-1.0}"
 CROP_MAX_RATIO="${CROP_MAX_RATIO:-1.0}"
 
 MAX_TRAIN_WINDOWS="${MAX_TRAIN_WINDOWS:-}"
-MAX_VALID_WINDOWS="${MAX_VALID_WINDOWS:-4096}"
 VAL_REPEATS="${VAL_REPEATS:-1}"
 SAVE_FULL_SERIES_FEATURES="${SAVE_FULL_SERIES_FEATURES:-0}"
 
@@ -56,7 +55,6 @@ python train_full_series_ts2vec_glucose.py
   --mask_prob "${MASK_PROB}"
   --crop_min_ratio "${CROP_MIN_RATIO}"
   --crop_max_ratio "${CROP_MAX_RATIO}"
-  --max_valid_windows "${MAX_VALID_WINDOWS}"
   --val_repeats "${VAL_REPEATS}"
 )
 

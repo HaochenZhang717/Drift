@@ -374,56 +374,66 @@ def main() -> None:
         avg_loss = epoch_loss / max(epoch_steps, 1)
         loss_log.append(avg_loss)
 
+        print(f"Epoch #{epoch}: Train loss={avg_loss:.6f} | ")
 
-        val_losses = [
-            run_epoch(
-                encoder,
-                valid_loader,
-                device=device,
-                temperature=args.temperature,
-                crop_min_ratio=args.crop_min_ratio,
-                crop_max_ratio=args.crop_max_ratio,
-                optimizer=None,
-            )
-            for _ in range(max(1, args.val_repeats))
-        ]
-        val_loss = float(np.mean(val_losses))
-        val_loss_log.append(val_loss)
-
-        if val_loss < best_val_loss:
-            best_val_loss = val_loss
-            best_epoch = epoch
-            best_path = output_dir / "best_full_series_ts2vec_glucose.pt"
-            torch.save(
-                {
-                    "model_state_dict": encoder.state_dict(),
-                    "metadata": metadata,
-                    "loss_log": loss_log,
-                    "val_loss_log": val_loss_log,
-                    "best_val_loss": best_val_loss,
-                    "best_epoch": best_epoch,
-                    "global_step": global_step,
-                },
-                best_path,
-            )
-            print(f"Saved best validation checkpoint to {best_path}")
-
-        print(
-            f"Epoch #{epoch}: loss={avg_loss:.6f} | "
-            f"val_loss={val_loss:.6f} | best_val_loss={best_val_loss:.6f}"
-        )
         if wandb_run is not None:
             wandb.log(
                 {
                     "train/loss": avg_loss,
-                    "val/loss": val_loss,
-                    "val/best_loss": best_val_loss,
-                    "val/best_epoch": best_epoch,
                     "train/epoch": epoch,
                     "train/global_step": global_step,
                 },
                 step=global_step,
             )
+
+        if epoch % 10 == 0 and epoch != 0:
+            val_losses = [
+                run_epoch(
+                    encoder,
+                    valid_loader,
+                    device=device,
+                    temperature=args.temperature,
+                    crop_min_ratio=args.crop_min_ratio,
+                    crop_max_ratio=args.crop_max_ratio,
+                    optimizer=None,
+                )
+                for _ in range(max(1, args.val_repeats))
+            ]
+            val_loss = float(np.mean(val_losses))
+            val_loss_log.append(val_loss)
+
+            if val_loss < best_val_loss:
+                best_val_loss = val_loss
+                best_epoch = epoch
+                best_path = output_dir / "best_full_series_ts2vec_glucose.pt"
+                torch.save(
+                    {
+                        "model_state_dict": encoder.state_dict(),
+                        "metadata": metadata,
+                        "loss_log": loss_log,
+                        "val_loss_log": val_loss_log,
+                        "best_val_loss": best_val_loss,
+                        "best_epoch": best_epoch,
+                        "global_step": global_step,
+                    },
+                    best_path,
+                )
+                print(f"Saved best validation checkpoint to {best_path}")
+
+            print(
+                f"Epoch #{epoch}: Train loss={avg_loss:.6f} | "
+                f"val_loss={val_loss:.6f} | best_val_loss={best_val_loss:.6f}"
+            )
+            if wandb_run is not None:
+                wandb.log(
+                    {
+                        "val/loss": val_loss,
+                        "val/best_loss": best_val_loss,
+                        "val/best_epoch": best_epoch,
+                        "val/global_step": global_step,
+                    },
+                    step=global_step,
+                )
 
         if args.iters is not None and global_step >= args.iters:
             break
