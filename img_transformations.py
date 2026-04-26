@@ -123,7 +123,11 @@ class DelayEmbedder(TsImgEmbedder):
         if self.seq_len != length:
             self.seq_len = length
 
-        x_image = torch.zeros((batch, features, self.embedding, self.embedding), dtype=signal.dtype)
+        x_image = torch.zeros(
+            (batch, features, self.embedding, self.embedding),
+            dtype=signal.dtype,
+            device=signal.device,
+        )
         i = 0
         while (i * self.delay + self.embedding) <= self.seq_len:
             start = i * self.delay
@@ -153,7 +157,11 @@ class DelayEmbedder(TsImgEmbedder):
 
         batch, channels, rows, cols = img_non_square.shape
 
-        reconstructed_x_time_series = torch.zeros((batch, channels, self.seq_len))
+        reconstructed_x_time_series = torch.zeros(
+            (batch, channels, self.seq_len),
+            dtype=img.dtype,
+            device=img.device,
+        )
 
         for i in range(cols - 1):
             start = i * self.delay

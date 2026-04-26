@@ -71,6 +71,7 @@ TS_SINE_CONFIG = {
     "alpha_min": 1.0,
     "alpha_max": 1.0,
     "use_feature_encoder": False,
+    "loss_domain": "time_series",
     "queue_size": 1280,
     "label_dropout": 0.0,
     # Sine time-series synthesis + delay embedding params
@@ -90,7 +91,7 @@ TS_SINE_CONFIG = {
 
 TS_GLUCOSE_CONFIG = {
     "model": "DriftDiT-Tiny",
-    "img_size": 16,  # Must match delay embedding size
+    "img_size": 12,  # Must match delay embedding size
     "in_channels": 1,
     "num_classes": 1,
     "batch_nc": 1,
@@ -98,20 +99,21 @@ TS_GLUCOSE_CONFIG = {
     "batch_n_neg": 320,
     "temperatures": [0.02, 0.05, 0.2],
     "lr": 2e-4,
-    "weight_decay": 0.01,
-    "grad_clip": 2.0,
+    "weight_decay": 1e-4,
+    "grad_clip": 1.0,
     "ema_decay": 0.999,
     "warmup_steps": 1000,
     "epochs": 100,
     "alpha_min": 1.0,
     "alpha_max": 1.0,
     "use_feature_encoder": False,
+    "loss_domain": "time_series",
     "queue_size": 1280,
     "label_dropout": 0.0,
     # Sine time-series synthesis + delay embedding params
     "ts_seq_len": 128,  # Gives exactly 32 delay columns for delay=1, embedding=32
-    "ts_delay": 8,
-    "ts_embedding": 16,
+    "ts_delay": 12,
+    "ts_embedding": 12,
     "ts_stride": 128,
 }
 
@@ -208,6 +210,7 @@ def compute_drifting_loss(
     temperatures: list,
     use_pixel_space: bool = False,
     spatial_mask: Optional[torch.Tensor] = None,
+    ts_loss_config: Optional[dict] = None,
 ) -> tuple:
     """
     Compute class-conditional drifting loss with multi-scale features.
@@ -223,6 +226,8 @@ def compute_drifting_loss(
         temperatures: List of temperatures for V computation
         use_pixel_space: Whether to use pixel space directly
         spatial_mask: Optional mask with 1.0 on valid regions and 0.0 on padding
+        ts_loss_config: If provided, convert delay-embedding images back to
+            time-series and compute the loss in that domain.
 
     Returns:
         loss: Scalar loss
@@ -231,13 +236,34 @@ def compute_drifting_loss(
     device = x_gen.device
     num_classes = labels_gen.max().item() + 1
 
-    # Extract features
-    if spatial_mask is not None:
+    # Extract features. For time-series datasets the generator still outputs a
+    # delay-embedding image, but the drifting loss can be computed on the
+    # reconstructed sequence instead of on image pixels.
+    if ts_loss_config is not None:
+        ts_gen = delay_images_to_series(x_gen, ts_loss_config, device)
+        ts_pos = delay_images_to_series(x_pos, ts_loss_config, device)
+        feat_gen_list = [ts_gen.flatten(start_dim=1)]
+        feat_pos_list = [ts_pos.flatten(start_dim=1)]
+    elif spatial_mask is not None:
         spatial_mask = spatial_mask.to(device=device, dtype=x_gen.dtype)
         x_gen = x_gen * spatial_mask
         x_pos = x_pos * spatial_mask
 
-    if use_pixel_space or feature_encoder is None:
+        if use_pixel_space or feature_encoder is None:
+            # Pixel space: single scale
+            feat_gen_list = [x_gen.flatten(start_dim=1)]
+            feat_pos_list = [x_pos.flatten(start_dim=1)]
+        else:
+            # Multi-scale feature maps from pretrained encoder
+            feat_gen_maps = feature_encoder(x_gen)  # List of (B, C, H, W)
+            with torch.no_grad():
+                feat_pos_maps = feature_encoder(x_pos)
+
+            # Global average pool each scale to get vectors. For time-series images,
+            # exclude padded regions from the pooled representation.
+            feat_gen_list = [masked_global_avg_pool2d(f, spatial_mask) for f in feat_gen_maps]
+            feat_pos_list = [masked_global_avg_pool2d(f, spatial_mask) for f in feat_pos_maps]
+    elif use_pixel_space or feature_encoder is None:
         # Pixel space: single scale
         feat_gen_list = [x_gen.flatten(start_dim=1)]
         feat_pos_list = [x_pos.flatten(start_dim=1)]
@@ -247,14 +273,8 @@ def compute_drifting_loss(
         with torch.no_grad():
             feat_pos_maps = feature_encoder(x_pos)
 
-        # Global average pool each scale to get vectors. For time-series images,
-        # exclude padded regions from the pooled representation.
-        if spatial_mask is None:
-            feat_gen_list = [F.adaptive_avg_pool2d(f, 1).flatten(1) for f in feat_gen_maps]
-            feat_pos_list = [F.adaptive_avg_pool2d(f, 1).flatten(1) for f in feat_pos_maps]
-        else:
-            feat_gen_list = [masked_global_avg_pool2d(f, spatial_mask) for f in feat_gen_maps]
-            feat_pos_list = [masked_global_avg_pool2d(f, spatial_mask) for f in feat_pos_maps]
+        feat_gen_list = [F.adaptive_avg_pool2d(f, 1).flatten(1) for f in feat_gen_maps]
+        feat_pos_list = [F.adaptive_avg_pool2d(f, 1).flatten(1) for f in feat_pos_maps]
 
     total_loss = torch.tensor(0.0, device=device, requires_grad=True)
     total_drift_norm = 0.0
@@ -342,6 +362,12 @@ def train_step(
     alpha_max = config["alpha_max"]
     temperatures = config["temperatures"]
     use_pixel = not config["use_feature_encoder"]
+    ts_loss_config = (
+        config
+        if config.get("loss_domain") == "time_series"
+        and is_time_series_dataset(config["dataset"])
+        else None
+    )
 
     # Total batch size
     batch_size = num_classes * n_neg
@@ -378,6 +404,7 @@ def train_step(
         temperatures,
         use_pixel_space=use_pixel,
         spatial_mask=spatial_mask,
+        ts_loss_config=ts_loss_config,
     )
 
     # Backward pass
@@ -837,13 +864,13 @@ def main():
     parser.add_argument(
         "--output_dir",
         type=str,
-        default="./outputs/sine_unconditional",
+        default="./outputs/glucose_unconditional_debug",
         help="Output directory",
     )
     parser.add_argument(
         "--data_root",
         type=str,
-        default="./data",
+        default="./AI-READI",
         help="Dataset root directory",
     )
     parser.add_argument(
@@ -910,7 +937,7 @@ def main():
     parser.add_argument(
         "--metric_iteration",
         type=int,
-        default=1,
+        default=10,
         help="Number of repeated metric runs for mean/std metrics",
     )
     parser.add_argument(
