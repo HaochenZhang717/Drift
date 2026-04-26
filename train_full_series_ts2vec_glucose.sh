@@ -13,6 +13,11 @@ LR="${LR:-5e-4}"
 WEIGHT_DECAY="${WEIGHT_DECAY:-0.0}"
 TEMPERATURE="${TEMPERATURE:-0.2}"
 
+# Model size.
+HIDDEN_DIMS="${HIDDEN_DIMS:-64}"
+OUTPUT_DIMS="${OUTPUT_DIMS:-128}"
+DEPTH="${DEPTH:-10}"
+
 # Probability of keeping each timestamp. MASK_PROB=0.8 means mask 20%.
 MASK_PROB="${MASK_PROB:-0.85}"
 
@@ -36,6 +41,9 @@ python train_full_series_ts2vec_glucose.py
   --stride "${STRIDE}"
   --batch_size "${BATCH_SIZE}"
   --epochs "${EPOCHS}"
+  --hidden_dims "${HIDDEN_DIMS}"
+  --output_dims "${OUTPUT_DIMS}"
+  --depth "${DEPTH}"
   --lr "${LR}"
   --weight_decay "${WEIGHT_DECAY}"
   --temperature "${TEMPERATURE}"
@@ -60,5 +68,6 @@ echo "Data root: ${DATA_ROOT}"
 echo "Output dir: ${OUTPUT_DIR}"
 echo "Mask keep prob: ${MASK_PROB}"
 echo "Crop ratio: ${CROP_MIN_RATIO}-${CROP_MAX_RATIO}"
+echo "Model: hidden_dims=${HIDDEN_DIMS}, output_dims=${OUTPUT_DIMS}, depth=${DEPTH}"
 
 "${CMD[@]}"
