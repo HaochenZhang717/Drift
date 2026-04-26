@@ -651,41 +651,41 @@ def train(
                         step=global_step,
                     )
 
-                if (
-                    metric_names
-                    and is_time_series_dataset(dataset_name)
-                    and eval_step_interval > 0
-                    and global_step % eval_step_interval == 0
-                ):
-                    try:
-                        metric_output_dir = output_dir / "metric_samples"
-                        metric_results = evaluate_time_series_metrics(
-                            ema.shadow,
-                            test_dataset,
-                            config,
-                            device,
-                            eval_metrics=metric_names,
-                            num_samples=eval_num_samples,
-                            metric_iteration=metric_iteration,
-                            num_workers=num_workers,
-                            base_path=metrics_base_path,
-                            vae_ckpt_root=vae_ckpt_root,
-                            output_dir=metric_output_dir,
+            if (
+                metric_names
+                and is_time_series_dataset(dataset_name)
+                and eval_step_interval > 0
+                and global_step % eval_step_interval == 0
+            ):
+                try:
+                    metric_output_dir = output_dir / "metric_samples"
+                    metric_results = evaluate_time_series_metrics(
+                        ema.shadow,
+                        test_dataset,
+                        config,
+                        device,
+                        eval_metrics=metric_names,
+                        num_samples=eval_num_samples,
+                        metric_iteration=metric_iteration,
+                        num_workers=num_workers,
+                        base_path=metrics_base_path,
+                        vae_ckpt_root=vae_ckpt_root,
+                        output_dir=metric_output_dir,
+                        step=global_step,
+                    )
+                    metric_str = " | ".join(
+                        f"{key}: {value:.4f}" for key, value in metric_results.items()
+                    )
+                    print(f"Metrics step {global_step} | {metric_str}")
+                    if wandb_run is not None:
+                        wandb.log(metric_results, step=global_step)
+                except Exception as exc:
+                    print(f"Metric evaluation failed at step {global_step}: {exc}")
+                    if wandb_run is not None:
+                        wandb.log(
+                            {"metric/eval_failed": 1, "metric/eval_error": str(exc)},
                             step=global_step,
                         )
-                        metric_str = " | ".join(
-                            f"{key}: {value:.4f}" for key, value in metric_results.items()
-                        )
-                        print(f"Metrics step {global_step} | {metric_str}")
-                        if wandb_run is not None:
-                            wandb.log(metric_results, step=global_step)
-                    except Exception as exc:
-                        print(f"Metric evaluation failed at step {global_step}: {exc}")
-                        if wandb_run is not None:
-                            wandb.log(
-                                {"metric/eval_failed": 1, "metric/eval_error": str(exc)},
-                                step=global_step,
-                            )
 
         # Epoch summary
         epoch_time = time.time() - epoch_start
