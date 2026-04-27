@@ -175,34 +175,17 @@ class DiTBlock(nn.Module):
         # Use SwiGLU as per paper
         self.mlp = SwiGLU(dim, mlp_hidden, dim)
 
-        # adaLN-Zero modulation: 6 parameters
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(dim, 6 * dim, bias=True),
-        )
 
     def forward(
         self,
         x: torch.Tensor,
-        c: torch.Tensor,
         rope_cos: Optional[torch.Tensor] = None,
         rope_sin: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
-        # Get modulation parameters
-        modulation = self.adaLN_modulation(c).chunk(6, dim=1)
-        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = modulation
-
         # Self-attention with adaLN + gating
-        x = x + gate_msa.unsqueeze(1) * self.attn(
-            modulate(self.norm1(x), shift_msa, scale_msa),
-            rope_cos,
-            rope_sin,
-        )
-
+        x = x + self.attn(self.norm1(x), rope_cos, rope_sin)
         # MLP with adaLN + gating
-        x = x + gate_mlp.unsqueeze(1) * self.mlp(
-            modulate(self.norm2(x), shift_mlp, scale_mlp)
-        )
+        x = x + self.mlp(self.norm2(x))
 
         return x
 
@@ -215,15 +198,8 @@ class FinalLayer(nn.Module):
         self.norm = RMSNorm(dim)
         self.linear = nn.Linear(dim, patch_size * patch_size * out_channels)
 
-        # adaLN modulation: 2 parameters (shift, scale)
-        self.adaLN_modulation = nn.Sequential(
-            nn.SiLU(),
-            nn.Linear(dim, 2 * dim, bias=True),
-        )
-
-    def forward(self, x: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
-        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
-        x = modulate(self.norm(x), shift, scale)
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        x = self.norm(x)
         x = self.linear(x)
         return x
 
@@ -354,10 +330,7 @@ class DriftDiT(nn.Module):
         depth: int = 6,
         num_heads: int = 4,
         mlp_ratio: float = 4.0,
-        num_classes: int = 10,
-        label_dropout: float = 0.1,
         num_register_tokens: int = 8,
-        use_style_embed: bool = True,
     ):
         super().__init__()
         self.img_size = img_size
@@ -390,13 +363,6 @@ class DriftDiT(nn.Module):
             max_seq_len=self.num_patches + num_register_tokens + 64,
         )
 
-        # Conditioning embeddings
-        self.label_embed = LabelEmbedder(num_classes, hidden_size, label_dropout)
-        self.alpha_embed = AlphaEmbedder(hidden_size)
-        self.use_style_embed = use_style_embed
-        if use_style_embed:
-            self.style_embed = StyleEmbedder(hidden_size)
-
         # Transformer blocks
         self.blocks = nn.ModuleList([
             DiTBlock(
@@ -412,33 +378,19 @@ class DriftDiT(nn.Module):
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
 
         # Initialize weights
-        self._init_weights()
+        # self._init_weights()
 
-    def _init_weights(self):
-        """Initialize model weights with specific strategy for adaLN-Zero."""
-        def _basic_init(module):
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-            elif isinstance(module, nn.Embedding):
-                nn.init.normal_(module.weight, std=0.02)
-
-        self.apply(_basic_init)
-
-        # Zero-init adaLN modulation layers (critical for training stability)
-        for block in self.blocks:
-            nn.init.zeros_(block.adaLN_modulation[-1].weight)
-            nn.init.zeros_(block.adaLN_modulation[-1].bias)
-
-        # Zero-init final layer adaLN modulation only
-        # NOTE: For drifting models (one-step generator), we keep the final linear
-        # layer with small random weights so the model outputs non-zero images initially
-        nn.init.zeros_(self.final_layer.adaLN_modulation[-1].weight)
-        nn.init.zeros_(self.final_layer.adaLN_modulation[-1].bias)
-        # Use small initialization for final linear (not zero!)
-        nn.init.normal_(self.final_layer.linear.weight, std=0.02)
-        nn.init.zeros_(self.final_layer.linear.bias)
+    # def _init_weights(self):
+    #     """Initialize model weights with specific strategy for adaLN-Zero."""
+    #     def _basic_init(module):
+    #         if isinstance(module, nn.Linear):
+    #             nn.init.xavier_uniform_(module.weight)
+    #             if module.bias is not None:
+    #                 nn.init.zeros_(module.bias)
+    #         elif isinstance(module, nn.Embedding):
+    #             nn.init.normal_(module.weight, std=0.02)
+    #
+    #     self.apply(_basic_init)
 
     def unpatchify(self, x: torch.Tensor) -> torch.Tensor:
         """
@@ -458,18 +410,12 @@ class DriftDiT(nn.Module):
     def forward(
         self,
         x: torch.Tensor,
-        labels: torch.Tensor,
-        alpha: torch.Tensor,
-        force_drop_ids: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         """
         Forward pass.
 
         Args:
             x: Input noise, shape (B, C, H, W)
-            labels: Class labels, shape (B,)
-            alpha: CFG scale, shape (B,)
-            force_drop_ids: Force label dropout for specific samples
 
         Returns:
             Generated images, shape (B, C, H, W)
@@ -488,66 +434,18 @@ class DriftDiT(nn.Module):
         seq_len = x.shape[1]
         rope_cos, rope_sin = self.rope(x, seq_len)
 
-        # Conditioning
-        c = self.label_embed(labels, self.training, force_drop_ids)
-        c = c + self.alpha_embed(alpha)
-        if self.use_style_embed:
-            c = c + self.style_embed(B, device)
-
         # Transformer blocks
         for block in self.blocks:
-            x = block(x, c, rope_cos, rope_sin)
+            x = block(x, rope_cos, rope_sin)
 
         # Remove register tokens
         x = x[:, self.num_register_tokens:, :]
 
         # Final layer and unpatchify
-        x = self.final_layer(x, c)
+        x = self.final_layer(x)
         x = self.unpatchify(x)
 
         return torch.tanh(x)
-
-    def forward_with_cfg(
-        self,
-        x: torch.Tensor,
-        labels: torch.Tensor,
-        alpha: float = 1.0,
-    ) -> torch.Tensor:
-        """
-        Forward pass with classifier-free guidance.
-        Runs two forward passes: conditional and unconditional.
-
-        Args:
-            x: Input noise, shape (B, C, H, W)
-            labels: Class labels, shape (B,)
-            alpha: CFG scale (scalar)
-
-        Returns:
-            Generated images, shape (B, C, H, W)
-        """
-        B = x.shape[0]
-        device = x.device
-
-        # Create alpha tensor
-        alpha_tensor = torch.full((B,), alpha, device=device, dtype=x.dtype)
-
-        # Duplicate inputs for conditional and unconditional
-        x_combined = torch.cat([x, x], dim=0)
-        labels_combined = torch.cat([labels, labels], dim=0)
-        alpha_combined = torch.cat([alpha_tensor, alpha_tensor], dim=0)
-
-        # Force unconditional for second half
-        force_drop = torch.cat([
-            torch.zeros(B, device=device),
-            torch.ones(B, device=device),
-        ]).bool()
-
-        # Forward pass
-        out = self.forward(x_combined, labels_combined, alpha_combined, force_drop)
-
-        # Split and apply CFG
-        cond, uncond = out.chunk(2, dim=0)
-        return uncond + alpha * (cond - uncond)
 
 
 def DriftDiT_Tiny(img_size=32, in_channels=3, num_classes=10, **kwargs):
@@ -560,7 +458,6 @@ def DriftDiT_Tiny(img_size=32, in_channels=3, num_classes=10, **kwargs):
         depth=6,
         num_heads=4,
         mlp_ratio=4.0,
-        num_classes=num_classes,
         **kwargs,
     )
 
@@ -575,7 +472,6 @@ def DriftDiT_Small(img_size=32, in_channels=3, num_classes=10, **kwargs):
         depth=8,
         num_heads=6,
         mlp_ratio=4.0,
-        num_classes=num_classes,
         **kwargs,
     )
 

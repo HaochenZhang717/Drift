@@ -28,6 +28,7 @@ from drifting import (
     normalize_drift,
 )
 from feature_encoder import create_feature_encoder, pretrain_mae
+from feature_extractors.ts2vec.models.encoder import TSEncoder
 from utils.utils_drift import (
     EMA,
     WarmupLRScheduler,
@@ -142,74 +143,55 @@ def sample_batch(
     return x_pos, labels
 
 
-def build_delay_embedding_mask(config: dict, device: torch.device) -> Optional[torch.Tensor]:
+def _strip_module_prefix(state_dict: dict) -> dict:
+    if not state_dict:
+        return state_dict
+    if not all(k.startswith("module.") for k in state_dict.keys()):
+        return state_dict
+    return {k[len("module."):]: v for k, v in state_dict.items()}
+
+
+def load_ts_feature_encoder_from_ckpt(
+    ckpt_path: str,
+    device: torch.device,
+) -> nn.Module:
     """
-    Build a fixed spatial mask for delay-embedding images.
-
-    Returns a mask of shape (1, 1, H, W) with 1.0 on valid regions and 0.0 on
-    padded regions. For non-time-series datasets, returns None.
+    Load a pretrained TS encoder checkpoint and return a frozen TSEncoder.
+    Supports checkpoints saved by train_full_series_ts2vec_glucose.py.
     """
-    dataset_name = config["dataset"].lower()
-    if dataset_name not in ["sine", "ts", "timeseries", "synthetic_sine", "glucose"]:
-        return None
-
-    seq_len = config["ts_seq_len"]
-    delay = config["ts_delay"]
-    embedding = config["ts_embedding"]
-    img_size = config["img_size"]
-
-    if img_size != embedding:
+    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    metadata = ckpt.get("metadata", {})
+    required = ["input_dims", "output_dims", "hidden_dims", "depth", "mask_prob"]
+    missing = [k for k in required if k not in metadata]
+    if missing:
         raise ValueError(
-            f"Expected img_size ({img_size}) to match ts_embedding ({embedding}) "
-            "for delay-embedding mask construction."
+            f"Missing fields {missing} in TS encoder checkpoint metadata at {ckpt_path}"
         )
 
-    mask = torch.zeros((1, 1, embedding, embedding), dtype=torch.float32, device=device)
+    encoder = TSEncoder(
+        input_dims=metadata["input_dims"],
+        output_dims=metadata["output_dims"],
+        hidden_dims=metadata["hidden_dims"],
+        depth=metadata["depth"],
+        mask_prob=metadata["mask_prob"],
+    ).to(device)
 
-    col = 0
-    while (col * delay + embedding) <= seq_len and col < embedding:
-        mask[:, :, :, col] = 1.0
-        col += 1
-
-    if (
-        col < embedding
-        and col * delay != seq_len
-        and col * delay + embedding > seq_len
-    ):
-        valid_rows = seq_len - col * delay
-        if valid_rows > 0:
-            mask[:, :, :valid_rows, col] = 1.0
-
-    return mask
-
-
-def is_time_series_dataset(dataset: str) -> bool:
-    return dataset.lower() in ["sine", "ts", "timeseries", "synthetic_sine", "glucose"]
-
-
-def masked_global_avg_pool2d(
-    features: torch.Tensor,
-    spatial_mask: torch.Tensor,
-) -> torch.Tensor:
-    """Average-pool features over valid spatial locations only."""
-    resized_mask = F.interpolate(
-        spatial_mask.to(dtype=features.dtype),
-        size=features.shape[-2:],
-        mode="nearest",
-    )
-    denom = resized_mask.sum(dim=(-2, -1)).clamp_min(1.0)
-    return (features * resized_mask).sum(dim=(-2, -1)) / denom
+    state_dict = ckpt.get("model_state_dict")
+    if state_dict is None:
+        raise ValueError(f"Checkpoint at {ckpt_path} does not contain model_state_dict")
+    state_dict = _strip_module_prefix(state_dict)
+    encoder.load_state_dict(state_dict, strict=True)
+    encoder.eval()
+    for param in encoder.parameters():
+        param.requires_grad = False
+    return encoder
 
 
 def compute_drifting_loss(
     x_gen: torch.Tensor,
-    labels_gen: torch.Tensor,
     x_pos: torch.Tensor,
-    labels_pos: torch.Tensor,
     feature_encoder: Optional[nn.Module],
     temperatures: list,
-    use_pixel_space: bool = False,
-    spatial_mask: Optional[torch.Tensor] = None,
     ts_loss_config: Optional[dict] = None,
 ) -> tuple:
     """
@@ -234,106 +216,76 @@ def compute_drifting_loss(
         info: Dict with metrics
     """
     device = x_gen.device
-    num_classes = labels_gen.max().item() + 1
+    # Two primary branches:
+    # 1) no feature encoder -> convert image to time series and use flattened
+    #    sequence vectors;
+    # 2) with feature encoder -> convert image to time series, then extract
+    #    deterministic full-series features from the encoder.
 
-    # Extract features. For time-series datasets the generator still outputs a
-    # delay-embedding image, but the drifting loss can be computed on the
-    # reconstructed sequence instead of on image pixels.
-    if ts_loss_config is not None:
-        ts_gen = delay_images_to_series(x_gen, ts_loss_config, device)
-        ts_pos = delay_images_to_series(x_pos, ts_loss_config, device)
-        feat_gen_list = [ts_gen.flatten(start_dim=1)]
-        feat_pos_list = [ts_pos.flatten(start_dim=1)]
-    elif spatial_mask is not None:
-        spatial_mask = spatial_mask.to(device=device, dtype=x_gen.dtype)
-        x_gen = x_gen * spatial_mask
-        x_pos = x_pos * spatial_mask
+    rep_gen = delay_images_to_series(x_gen, ts_loss_config, device)
+    rep_pos = delay_images_to_series(x_pos, ts_loss_config, device)
 
-        if use_pixel_space or feature_encoder is None:
-            # Pixel space: single scale
-            feat_gen_list = [x_gen.flatten(start_dim=1)]
-            feat_pos_list = [x_pos.flatten(start_dim=1)]
-        else:
-            # Multi-scale feature maps from pretrained encoder
-            feat_gen_maps = feature_encoder(x_gen)  # List of (B, C, H, W)
-            with torch.no_grad():
-                feat_pos_maps = feature_encoder(x_pos)
-
-            # Global average pool each scale to get vectors. For time-series images,
-            # exclude padded regions from the pooled representation.
-            feat_gen_list = [masked_global_avg_pool2d(f, spatial_mask) for f in feat_gen_maps]
-            feat_pos_list = [masked_global_avg_pool2d(f, spatial_mask) for f in feat_pos_maps]
-    elif use_pixel_space or feature_encoder is None:
-        # Pixel space: single scale
-        feat_gen_list = [x_gen.flatten(start_dim=1)]
-        feat_pos_list = [x_pos.flatten(start_dim=1)]
+    if feature_encoder is None:
+        feat_gen_list = [rep_gen.flatten(start_dim=1)]
+        feat_pos_list = [rep_pos.flatten(start_dim=1)]
     else:
-        # Multi-scale feature maps from pretrained encoder
-        feat_gen_maps = feature_encoder(x_gen)  # List of (B, C, H, W)
+        feat_gen_seq = feature_encoder(rep_gen, mask="all_true")
         with torch.no_grad():
-            feat_pos_maps = feature_encoder(x_pos)
+            feat_pos_seq = feature_encoder(rep_pos, mask="all_true")
 
-        feat_gen_list = [F.adaptive_avg_pool2d(f, 1).flatten(1) for f in feat_gen_maps]
-        feat_pos_list = [F.adaptive_avg_pool2d(f, 1).flatten(1) for f in feat_pos_maps]
+        if isinstance(feature_encoder, TSEncoder):
+            feat_gen = F.max_pool1d(
+                feat_gen_seq.transpose(1, 2),
+                kernel_size=feat_gen_seq.size(1),
+            ).squeeze(-1)
+            feat_gen = F.normalize(feat_gen, p=2, dim=1)
+
+            feat_pos = F.max_pool1d(
+                feat_pos_seq.transpose(1, 2),
+                kernel_size=feat_pos_seq.size(1),
+            ).squeeze(-1)
+            feat_pos = F.normalize(feat_pos, p=2, dim=1)
+        else:
+            raise ValueError("feature_encoder must be an instance of [TSEncoder,]")
+
+        feat_gen_list = [feat_gen]
+        feat_pos_list = [feat_pos]
 
     total_loss = torch.tensor(0.0, device=device, requires_grad=True)
     total_drift_norm = 0.0
-    num_losses = 0
 
-    # Compute loss per class
-    for c in range(num_classes):
-        mask_gen = labels_gen == c
-        mask_pos = labels_pos == c
+    # Compute loss at each scale
+    for scale_idx, (feat_gen, feat_pos) in enumerate(zip(feat_gen_list, feat_pos_list)):
+        # Negatives: generated samples (following Algorithm 1: y_neg = x)
+        feat_neg = feat_gen
+        # Compute V with multiple temperatures
+        V_total = torch.zeros_like(feat_gen)
+        for tau in temperatures:
+            V_tau = compute_V(
+                feat_gen,
+                feat_pos,
+                feat_neg,
+                tau,
+                mask_self=True,  # y_neg = x, so mask self
+            )
+            # Normalize each V before summing
+            v_norm = torch.sqrt(torch.mean(V_tau ** 2) + 1e-8)
+            V_tau = V_tau / (v_norm + 1e-8)
+            V_total = V_total + V_tau
 
-        if not mask_gen.any() or not mask_pos.any():
-            continue
+        # Loss: MSE(phi(x), stopgrad(phi(x) + V))
+        target = (feat_gen + V_total).detach()
+        loss_scale = F.mse_loss(feat_gen, target)
 
-        # Compute loss at each scale
-        for scale_idx, (feat_gen, feat_pos) in enumerate(zip(feat_gen_list, feat_pos_list)):
-            feat_gen_c = feat_gen[mask_gen]
-            feat_pos_c = feat_pos[mask_pos]
+        total_loss = total_loss + loss_scale
+        total_drift_norm += (V_total ** 2).mean().item() ** 0.5
 
-            # Negatives: generated samples from current class (following Algorithm 1: y_neg = x)
-            feat_neg_c = feat_gen_c
-
-            # Simple L2 normalization (projects to unit sphere)
-            feat_gen_c_norm = F.normalize(feat_gen_c, p=2, dim=1)
-            feat_pos_c_norm = F.normalize(feat_pos_c, p=2, dim=1)
-            feat_neg_c_norm = F.normalize(feat_neg_c, p=2, dim=1)
-
-            # Compute V with multiple temperatures
-            V_total = torch.zeros_like(feat_gen_c_norm)
-            for tau in temperatures:
-                V_tau = compute_V(
-                    feat_gen_c_norm,
-                    feat_pos_c_norm,
-                    feat_neg_c_norm,
-                    tau,
-                    mask_self=True,  # y_neg = x, so mask self
-                )
-                # Normalize each V before summing
-                v_norm = torch.sqrt(torch.mean(V_tau ** 2) + 1e-8)
-                V_tau = V_tau / (v_norm + 1e-8)
-                V_total = V_total + V_tau
-
-            # Loss: MSE(phi(x), stopgrad(phi(x) + V))
-            target = (feat_gen_c_norm + V_total).detach()
-            loss_scale = F.mse_loss(feat_gen_c_norm, target)
-
-            total_loss = total_loss + loss_scale
-            total_drift_norm += (V_total ** 2).mean().item() ** 0.5
-            num_losses += 1
-
-    if num_losses == 0:
-        return torch.tensor(0.0, device=device, requires_grad=True), {"loss": 0.0, "drift_norm": 0.0}
-
-    loss = total_loss / num_losses
     info = {
-        "loss": loss.item(),
-        "drift_norm": total_drift_norm / num_losses,
+        "loss": total_loss.item(),
+        "drift_norm": total_drift_norm,
     }
 
-    return loss, info
+    return total_loss, info
 
 
 def train_step(
@@ -343,7 +295,6 @@ def train_step(
     config: dict,
     device: torch.device,
     feature_encoder: Optional[nn.Module] = None,
-    spatial_mask: Optional[torch.Tensor] = None,
 ) -> dict:
     """
     Single training step (Algorithm 1).
@@ -358,25 +309,15 @@ def train_step(
     num_classes = config["num_classes"]
     n_pos = config["batch_n_pos"]
     n_neg = config["batch_n_neg"]
-    alpha_min = config["alpha_min"]
-    alpha_max = config["alpha_max"]
     temperatures = config["temperatures"]
-    use_pixel = not config["use_feature_encoder"]
     ts_loss_config = (
         config
         if config.get("loss_domain") == "time_series"
-        and is_time_series_dataset(config["dataset"])
         else None
     )
 
     # Total batch size
-    batch_size = num_classes * n_neg
-
-    # Sample class labels (repeat each class n_neg times)
-    labels = torch.arange(num_classes, device=device).repeat_interleave(n_neg)
-
-    # Sample CFG alpha ~ Uniform(alpha_min, alpha_max)
-    alpha = torch.empty(batch_size, device=device).uniform_(alpha_min, alpha_max)
+    batch_size = n_neg
 
     # Sample noise
     noise = torch.randn(
@@ -388,7 +329,7 @@ def train_step(
     )
 
     # Generate samples
-    x_gen = model(noise, labels, alpha) # (n_class*n_neg, 1, 32, 32)
+    x_gen = model(noise) # (n_class*n_neg, 1, 32, 32)
 
     # Sample positive samples from queue
     x_pos, labels_pos = sample_batch(queue, num_classes, n_pos, device)
@@ -397,13 +338,9 @@ def train_step(
     # Compute drifting loss
     loss, info = compute_drifting_loss(
         x_gen,
-        labels,
         x_pos,
-        labels_pos,
         feature_encoder,
         temperatures,
-        use_pixel_space=use_pixel,
-        spatial_mask=spatial_mask,
         ts_loss_config=ts_loss_config,
     )
 
@@ -464,6 +401,7 @@ def train(
     wandb_mode: Optional[str] = None,
     metrics_base_path: Optional[str] = None,
     vae_ckpt_root: Optional[str] = None,
+    ts_feature_encoder_ckpt: Optional[str] = None,
 ):
     """Main training function."""
     set_seed(seed)
@@ -483,6 +421,7 @@ def train(
     config["eval_step_interval"] = eval_step_interval
     config["eval_num_samples"] = eval_num_samples
     config["metric_iteration"] = metric_iteration
+    config["ts_feature_encoder_ckpt"] = ts_feature_encoder_ckpt
 
     # Setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -529,8 +468,6 @@ def train(
     model = model_fn(
         img_size=config["img_size"],
         in_channels=config["in_channels"],
-        num_classes=config["num_classes"],
-        label_dropout=config["label_dropout"],
     ).to(device)
 
     print(f"Model: {config['model']}, Parameters: {count_parameters(model):,}")
@@ -560,26 +497,34 @@ def train(
         queue_size=config["queue_size"],
         sample_shape=(config["in_channels"], config["img_size"], config["img_size"]),
     )
-    spatial_mask = build_delay_embedding_mask(config, device)
 
-    # Feature encoder (for CIFAR)
+    # Feature encoder
     feature_encoder = None
-    if config["use_feature_encoder"]:
-        print("Creating feature encoder...")
-        feature_encoder = create_feature_encoder(
-            dataset=dataset,
-            feature_dim=512,
-            multi_scale=True,
-            use_pretrained=True,  # Use ImageNet-pretrained ResNet
-        ).to(device)
+    if ts_feature_encoder_ckpt is not None:
+        print(f"Loading time-series feature encoder from {ts_feature_encoder_ckpt}")
+        feature_encoder = load_ts_feature_encoder_from_ckpt(
+            ts_feature_encoder_ckpt,
+            device,
+        )
+        config["use_feature_encoder"] = True
+        print("Using pretrained TS feature encoder for drifting loss.")
 
-        # For pretrained ResNet, no need for MAE pre-training
-        # The ImageNet features work well for natural images
-        print("Using ImageNet-pretrained ResNet encoder")
-
-        feature_encoder.eval()
-        for param in feature_encoder.parameters():
-            param.requires_grad = False
+    # elif config["use_feature_encoder"]:
+    #     print("Creating feature encoder...")
+    #     feature_encoder = create_feature_encoder(
+    #         dataset=dataset,
+    #         feature_dim=512,
+    #         multi_scale=True,
+    #         use_pretrained=True,  # Use ImageNet-pretrained ResNet
+    #     ).to(device)
+    #
+    #     # For pretrained ResNet, no need for MAE pre-training
+    #     # The ImageNet features work well for natural images
+    #     print("Using ImageNet-pretrained ResNet encoder")
+    #
+    #     feature_encoder.eval()
+    #     for param in feature_encoder.parameters():
+    #         param.requires_grad = False
 
     # Resume from checkpoint
     start_epoch = 0
@@ -625,7 +570,6 @@ def train(
                 config,
                 device,
                 feature_encoder,
-                spatial_mask,
             )
 
             # Update EMA and scheduler
@@ -680,7 +624,6 @@ def train(
 
             if (
                 metric_names
-                and is_time_series_dataset(dataset_name)
                 and eval_step_interval > 0
                 and global_step % eval_step_interval == 0
             ):
@@ -839,15 +782,9 @@ def generate_samples(
     labels = torch.zeros(num_samples, device=device, dtype=torch.long)
     alpha_tensor = torch.full((num_samples,), alpha, device=device)
     samples = model(noise, labels, alpha_tensor)
-    # samples = samples.clamp(-1, 1)
 
-    dataset_name = str(config.get("dataset", "")).lower()
-
-    if is_time_series_dataset(dataset_name):
-        series = delay_images_to_series(samples, config, device)
-        save_time_series_grid(series, save_path, ncol=8)  # 10 x 8 for 80 samples
-    else:
-        save_image_grid(samples, save_path, nrow=8)
+    series = delay_images_to_series(samples, config, device)
+    save_time_series_grid(series, save_path, ncol=8)  # 10 x 8 for 80 samples
 
     return samples
 
@@ -983,6 +920,12 @@ def main():
         help="Checkpoint root for vaeFID",
     )
     parser.add_argument(
+        "--ts_feature_encoder_ckpt",
+        type=str,
+        default=None,
+        help="Path to pretrained TS encoder checkpoint (full_series_ts2vec_glucose.pt).",
+    )
+    parser.add_argument(
         "--glucose_stride",
         type=int,
         default=TS_GLUCOSE_CONFIG["ts_stride"],
@@ -1014,6 +957,7 @@ def main():
         wandb_mode=args.wandb_mode,
         metrics_base_path=args.metrics_base_path,
         vae_ckpt_root=args.vae_ckpt_root,
+        ts_feature_encoder_ckpt=args.ts_feature_encoder_ckpt,
     )
 
 

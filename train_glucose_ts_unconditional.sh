@@ -6,7 +6,7 @@ set -euo pipefail
 # =========================
 
 GPU_ID="${GPU_ID:-${CUDA_VISIBLE_DEVICES:-0}}"
-EXP_NAME="${EXP_NAME:-glucose_ts_unconditional}"
+EXP_NAME="${EXP_NAME:-glucose_no_ts_encoder}"
 DATA_ROOT="${DATA_ROOT:-./AI-READI}"
 OUTPUT_DIR="${OUTPUT_DIR:-./outputs/${EXP_NAME}}"
 PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
@@ -15,7 +15,7 @@ PYTORCH_ALLOC_CONF="${PYTORCH_ALLOC_CONF:-expandable_segments:True}"
 # Runtime config
 # =========================
 
-NUM_WORKERS="${NUM_WORKERS:-4}"
+NUM_WORKERS="${NUM_WORKERS:-1}"
 SEED="${SEED:-42}"
 LOG_INTERVAL="${LOG_INTERVAL:-100}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
@@ -38,6 +38,7 @@ WANDB_PROJECT="${WANDB_PROJECT:-drifting-model-ts}"
 WANDB_RUN_NAME="${WANDB_RUN_NAME:-${EXP_NAME}}"
 WANDB_ENTITY="${WANDB_ENTITY:-}"
 WANDB_MODE="${WANDB_MODE:-online}"
+TS_FEATURE_ENCODER_CKPT="${TS_FEATURE_ENCODER_CKPT:-}"
 
 echo "Starting glucose unconditional training..."
 echo "Experiment: ${EXP_NAME}"
@@ -51,6 +52,7 @@ echo "VAE ckpt root: ${VAE_CKPT_ROOT}"
 echo "W&B enabled: ${WANDB_ENABLED}"
 echo "W&B project: ${WANDB_PROJECT}"
 echo "W&B run: ${WANDB_RUN_NAME}"
+echo "TS feature encoder ckpt: ${TS_FEATURE_ENCODER_CKPT:-none}"
 
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${METRICS_BASE_PATH}"
@@ -78,6 +80,10 @@ python train_ts_unconditional.py
 
 if [[ -n "${EVAL_NUM_SAMPLES}" ]]; then
     CMD+=(--eval_num_samples "${EVAL_NUM_SAMPLES}")
+fi
+
+if [[ -n "${TS_FEATURE_ENCODER_CKPT}" ]]; then
+    CMD+=(--ts_feature_encoder_ckpt "${TS_FEATURE_ENCODER_CKPT}")
 fi
 
 if [[ "${WANDB_ENABLED}" == "1" ]]; then

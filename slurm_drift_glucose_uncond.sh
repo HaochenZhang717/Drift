@@ -78,6 +78,7 @@ WANDB_PROJECT="${WANDB_PROJECT:-drifting-model-ts}"
 WANDB_RUN_NAME="${WANDB_RUN_NAME:-${EXP_NAME}}"
 WANDB_ENTITY="${WANDB_ENTITY:-}"
 WANDB_MODE="${WANDB_MODE:-online}"
+TS_FEATURE_ENCODER_CKPT="${TS_FEATURE_ENCODER_CKPT:-}"
 
 echo "Starting glucose unconditional training..."
 echo "Experiment: ${EXP_NAME}"
@@ -91,6 +92,7 @@ echo "VAE ckpt root: ${VAE_CKPT_ROOT}"
 echo "W&B enabled: ${WANDB_ENABLED}"
 echo "W&B project: ${WANDB_PROJECT}"
 echo "W&B run: ${WANDB_RUN_NAME}"
+echo "TS feature encoder ckpt: ${TS_FEATURE_ENCODER_CKPT:-none}"
 
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${METRICS_BASE_PATH}"
@@ -118,6 +120,10 @@ python train_ts_unconditional.py
 
 if [[ -n "${EVAL_NUM_SAMPLES}" ]]; then
     CMD+=(--eval_num_samples "${EVAL_NUM_SAMPLES}")
+fi
+
+if [[ -n "${TS_FEATURE_ENCODER_CKPT}" ]]; then
+    CMD+=(--ts_feature_encoder_ckpt "${TS_FEATURE_ENCODER_CKPT}")
 fi
 
 if [[ "${WANDB_ENABLED}" == "1" ]]; then
