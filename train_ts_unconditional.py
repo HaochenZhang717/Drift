@@ -41,6 +41,7 @@ from utils.utils_drift import (
 )
 import pandas as pd
 from ts_quality_eval import (
+    collect_real_time_series,
     delay_images_to_series,
     evaluate_time_series_metrics,
     parse_metric_names,
@@ -99,7 +100,7 @@ TS_GLUCOSE_CONFIG = {
     "batch_n_pos": 320,
     "batch_n_neg": 320,
     "temperatures": [0.02, 0.05, 0.2],
-    "lr": 2e-4,
+    "lr": 1e-4,
     "weight_decay": 1e-4,
     "grad_clip": 1.0,
     "ema_decay": 0.999,
@@ -379,6 +380,14 @@ def fill_queue(
             break
 
 
+def prefix_metric_results(results: Dict[str, Any], split: str) -> Dict[str, Any]:
+    """Prefix metric keys with the evaluated data split."""
+    return {
+        key.replace("metric/", f"metric/{split}/", 1): value
+        for key, value in results.items()
+    }
+
+
 def train(
     dataset: str = "sine",
     output_dir: str = "./outputs",
@@ -608,6 +617,7 @@ def train(
             # Generate samples every 500 steps for quick visualization
             if global_step % 500 == 0:
                 sample_path = output_dir / f"samples_step{global_step}.png"
+                real_sample_path = output_dir / f"real_samples_step{global_step}.png"
                 generate_samples(
                     ema.shadow,
                     config,
@@ -615,10 +625,22 @@ def train(
                     str(sample_path),
                     num_samples=80,
                 )
+                save_real_time_series_samples(
+                    train_dataset,
+                    config,
+                    device,
+                    str(real_sample_path),
+                    num_samples=80,
+                    num_workers=num_workers,
+                )
                 print(f"Saved samples to {sample_path}")
+                print(f"Saved real samples to {real_sample_path}")
                 if wandb_run is not None:
                     wandb.log(
-                        {"samples/step": wandb.Image(str(sample_path))},
+                        {
+                            "samples/step": wandb.Image(str(sample_path)),
+                            "samples/real_step": wandb.Image(str(real_sample_path)),
+                        },
                         step=global_step,
                     )
 
@@ -628,21 +650,29 @@ def train(
                 and global_step % eval_step_interval == 0
             ):
                 try:
-                    metric_output_dir = output_dir / "metric_samples"
-                    metric_results = evaluate_time_series_metrics(
-                        ema.shadow,
-                        test_dataset,
-                        config,
-                        device,
-                        eval_metrics=metric_names,
-                        num_samples=eval_num_samples,
-                        metric_iteration=metric_iteration,
-                        num_workers=num_workers,
-                        base_path=metrics_base_path,
-                        vae_ckpt_root=vae_ckpt_root,
-                        output_dir=metric_output_dir,
-                        step=global_step,
-                    )
+                    metric_results = {}
+                    for split, eval_dataset in (
+                        ("train", train_dataset),
+                        ("test", test_dataset),
+                    ):
+                        split_output_dir = output_dir / "metric_samples" / split
+                        split_results = evaluate_time_series_metrics(
+                            ema.shadow,
+                            eval_dataset,
+                            config,
+                            device,
+                            eval_metrics=metric_names,
+                            num_samples=eval_num_samples,
+                            metric_iteration=metric_iteration,
+                            num_workers=num_workers,
+                            base_path=metrics_base_path,
+                            vae_ckpt_root=vae_ckpt_root,
+                            output_dir=split_output_dir,
+                            step=global_step,
+                        )
+                        metric_results.update(
+                            prefix_metric_results(split_results, split)
+                        )
                     metric_str = " | ".join(
                         f"{key}: {value:.4f}" for key, value in metric_results.items()
                     )
@@ -694,6 +724,7 @@ def train(
         # Generate samples
         if (epoch + 1) % sample_interval == 0:
             sample_path = output_dir / f"samples_epoch{epoch+1}.png"
+            real_sample_path = output_dir / f"real_samples_epoch{epoch+1}.png"
             generate_samples(
                 ema.shadow,
                 config,
@@ -701,10 +732,22 @@ def train(
                 str(sample_path),
                 num_samples=80,
             )
+            save_real_time_series_samples(
+                train_dataset,
+                config,
+                device,
+                str(real_sample_path),
+                num_samples=80,
+                num_workers=num_workers,
+            )
             print(f"Saved samples to {sample_path}")
+            print(f"Saved real samples to {real_sample_path}")
             if wandb_run is not None:
                 wandb.log(
-                    {"samples/epoch": wandb.Image(str(sample_path))},
+                    {
+                        "samples/epoch": wandb.Image(str(sample_path)),
+                        "samples/real_epoch": wandb.Image(str(real_sample_path)),
+                    },
                     step=global_step,
                 )
 
@@ -761,6 +804,25 @@ def save_time_series_grid(
     fig.tight_layout(pad=0.3)
     fig.savefig(save_path, dpi=150)
     plt.close(fig)
+
+
+def save_real_time_series_samples(
+    dataset: Dataset,
+    config: dict,
+    device: torch.device,
+    save_path: str,
+    num_samples: int = 80,
+    num_workers: int = 0,
+):
+    """Collect real delay-embedded samples and save them as time-series plots."""
+    series = collect_real_time_series(
+        dataset,
+        config,
+        device,
+        num_samples=min(num_samples, len(dataset)),
+        num_workers=num_workers,
+    )
+    save_time_series_grid(series, save_path, ncol=8)
 
 
 @torch.no_grad()
