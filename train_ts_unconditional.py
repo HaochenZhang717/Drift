@@ -112,7 +112,6 @@ TS_GLUCOSE_CONFIG = {
     "loss_domain": "time_series",
     "queue_size": 1280,
     "label_dropout": 0.0,
-    # Sine time-series synthesis + delay embedding params
     "ts_seq_len": 128,  # Gives exactly 32 delay columns for delay=1, embedding=32
     "ts_delay": 12,
     "ts_embedding": 12,
@@ -411,6 +410,9 @@ def train(
     metrics_base_path: Optional[str] = None,
     vae_ckpt_root: Optional[str] = None,
     ts_feature_encoder_ckpt: Optional[str] = None,
+    lr: Optional[float] = None,
+    batch_size: Optional[int] = None,
+    epochs: Optional[int] = None,
 ):
     """Main training function."""
     set_seed(seed)
@@ -431,6 +433,10 @@ def train(
     config["eval_num_samples"] = eval_num_samples
     config["metric_iteration"] = metric_iteration
     config["ts_feature_encoder_ckpt"] = ts_feature_encoder_ckpt
+    if lr is not None:
+        config["lr"] = lr
+    if epochs is not None:
+        config["epochs"] = epochs
 
     # Setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -465,7 +471,7 @@ def train(
     print(f"Dataset sizes | train: {len(train_dataset)} | test: {len(test_dataset)}")
     train_loader = DataLoader(
         train_dataset,
-        batch_size=256,
+        batch_size=(256 if batch_size is None else batch_size),
         shuffle=True,
         num_workers=num_workers,
         pin_memory=True,
@@ -832,7 +838,6 @@ def generate_samples(
     device: torch.device,
     save_path: str,
     num_samples: int = 80,
-    alpha: float = 1.5,
 ):
     """Generate samples and save visualization."""
     model.eval()
@@ -841,9 +846,7 @@ def generate_samples(
     img_size = config["img_size"]
 
     noise = torch.randn(num_samples, in_channels, img_size, img_size, device=device)
-    labels = torch.zeros(num_samples, device=device, dtype=torch.long)
-    alpha_tensor = torch.full((num_samples,), alpha, device=device)
-    samples = model(noise, labels, alpha_tensor)
+    samples = model(noise)
 
     series = delay_images_to_series(samples, config, device)
     save_time_series_grid(series, save_path, ncol=8)  # 10 x 8 for 80 samples
@@ -993,6 +996,24 @@ def main():
         default=TS_GLUCOSE_CONFIG["ts_stride"],
         help="Sliding-window stride for the Glucose dataset",
     )
+    parser.add_argument(
+        "--lr",
+        type=float,
+        default=None,
+        help="Override learning rate from dataset config.",
+    )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=None,
+        help="Override training DataLoader batch size (default: 256).",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=None,
+        help="Override total training epochs from dataset config.",
+    )
 
     args = parser.parse_args()
     TS_GLUCOSE_CONFIG["ts_stride"] = args.glucose_stride
@@ -1020,6 +1041,9 @@ def main():
         metrics_base_path=args.metrics_base_path,
         vae_ckpt_root=args.vae_ckpt_root,
         ts_feature_encoder_ckpt=args.ts_feature_encoder_ckpt,
+        lr=args.lr,
+        batch_size=args.batch_size,
+        epochs=args.epochs,
     )
 
 

@@ -56,7 +56,6 @@ def generate_time_series_samples(
     device: torch.device,
     num_samples: int,
     batch_size: int = 256,
-    alpha: float = 1.5,
 ) -> torch.Tensor:
     """Generate time-series samples from a delay-embedding image generator."""
     model.eval()
@@ -71,9 +70,7 @@ def generate_time_series_samples(
             config["img_size"],
             device=device,
         )
-        labels = torch.zeros(current_batch, device=device, dtype=torch.long)
-        alpha_tensor = torch.full((current_batch,), alpha, device=device)
-        samples = model(noise, labels, alpha_tensor).clamp(-1, 1)
+        samples = model(noise)
         all_series.append(delay_images_to_series(samples, config, device).detach().cpu())
 
     return torch.cat(all_series, dim=0)

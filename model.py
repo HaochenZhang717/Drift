@@ -452,7 +452,7 @@ def DriftDiT_Tiny(img_size=32, in_channels=3, num_classes=10, **kwargs):
     """DriftDiT-Tiny: depth=6, hidden_dim=256, heads=4 -> ~5M params"""
     return DriftDiT(
         img_size=img_size,
-        patch_size=4,
+        patch_size=2,
         in_channels=in_channels,
         hidden_size=256,
         depth=6,

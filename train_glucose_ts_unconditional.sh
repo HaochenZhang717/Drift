@@ -20,6 +20,9 @@ SEED="${SEED:-42}"
 LOG_INTERVAL="${LOG_INTERVAL:-100}"
 SAVE_INTERVAL="${SAVE_INTERVAL:-10}"
 SAMPLE_INTERVAL="${SAMPLE_INTERVAL:-10}"
+LR="${LR:-}"
+BATCH_SIZE="${BATCH_SIZE:-}"
+EPOCHS="${EPOCHS:-}"
 
 # Glucose windows. train_ts_unconditional.py uses seq_len=128, delay=8,
 # embedding=16 from TS_GLUCOSE_CONFIG.
@@ -53,6 +56,9 @@ echo "W&B enabled: ${WANDB_ENABLED}"
 echo "W&B project: ${WANDB_PROJECT}"
 echo "W&B run: ${WANDB_RUN_NAME}"
 echo "TS feature encoder ckpt: ${TS_FEATURE_ENCODER_CKPT:-none}"
+echo "LR override: ${LR:-default}"
+echo "Batch size override: ${BATCH_SIZE:-default(256)}"
+echo "Epochs override: ${EPOCHS:-default}"
 
 mkdir -p "${OUTPUT_DIR}"
 mkdir -p "${METRICS_BASE_PATH}"
@@ -84,6 +90,18 @@ fi
 
 if [[ -n "${TS_FEATURE_ENCODER_CKPT}" ]]; then
     CMD+=(--ts_feature_encoder_ckpt "${TS_FEATURE_ENCODER_CKPT}")
+fi
+
+if [[ -n "${LR}" ]]; then
+    CMD+=(--lr "${LR}")
+fi
+
+if [[ -n "${BATCH_SIZE}" ]]; then
+    CMD+=(--batch_size "${BATCH_SIZE}")
+fi
+
+if [[ -n "${EPOCHS}" ]]; then
+    CMD+=(--epochs "${EPOCHS}")
 fi
 
 if [[ "${WANDB_ENABLED}" == "1" ]]; then
