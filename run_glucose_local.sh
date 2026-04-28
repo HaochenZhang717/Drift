@@ -8,10 +8,31 @@
 #bash train_glucose_ts_unconditional.sh
 
 # calcualte loss on data domain
+#GPU_ID=5 \
+#EXP_NAME=glucose_no_ts_encoder \
+#NUM_WORKERS=4 \
+#USE_FEATURE_ENCODER=0 \
+#WANDB_RUN_NAME="data_loss_0.02,0.05,0.2" \
+#TEMPERATURES=0.02,0.05,0.2 \
+#EPOCHS=40 \
+#bash train_glucose_ts_unconditional.sh
+
 GPU_ID=5 \
 EXP_NAME=glucose_no_ts_encoder \
 NUM_WORKERS=4 \
 USE_FEATURE_ENCODER=0 \
-WANDB_RUN_NAME="data_loss" \
-TEMPERATURES=0.01,0.02,0.05 \
+WANDB_RUN_NAME="data_loss_0.1,0.2" \
+TEMPERATURES=0.1,0.2 \
+EPOCHS=40 \
 bash train_glucose_ts_unconditional.sh
+
+GPU_ID=5 \
+EXP_NAME=glucose_no_ts_encoder \
+NUM_WORKERS=4 \
+USE_FEATURE_ENCODER=0 \
+WANDB_RUN_NAME="data_loss_0.05,0.2" \
+TEMPERATURES=0.05,0.2 \
+EPOCHS=40 \
+bash train_glucose_ts_unconditional.sh
+
+

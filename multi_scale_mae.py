@@ -155,7 +155,9 @@ class MultiScaleTimeSeriesMAE(nn.Module):
         seq_len: Input window length T.
         patch_sizes: Patch sizes for z1, z2, z3.
         strides: Optional patch strides. Defaults to patch_size // 2 per scale.
-        embed_dim: Latent token dimension d.
+        embed_dim: Encoder and bridge token dimension.
+        latent_dim: Fused token dimension used by z1_fused, z2_fused, z3_fused.
+            Defaults to embed_dim.
         encoder_depth: Per-scale encoder depth.
         bridge_depth: Self-attention bridge depth after concatenating all scales.
         decoder_depth: Optional per-scale decoder Transformer depth before linear heads.
@@ -170,6 +172,7 @@ class MultiScaleTimeSeriesMAE(nn.Module):
         patch_sizes: Sequence[int] = (4, 16, 64),
         strides: Optional[Sequence[int]] = None,
         embed_dim: int = 128,
+        latent_dim: Optional[int] = None,
         encoder_depth: int = 2,
         bridge_depth: int = 2,
         decoder_depth: int = 1,
@@ -188,12 +191,19 @@ class MultiScaleTimeSeriesMAE(nn.Module):
             raise ValueError("strides must contain exactly three scales")
         if len(loss_weights) != 3:
             raise ValueError("loss_weights must contain exactly three values")
+        if embed_dim % num_heads != 0:
+            raise ValueError("embed_dim must be divisible by num_heads")
+        if latent_dim is None:
+            latent_dim = embed_dim
+        if latent_dim % num_heads != 0:
+            raise ValueError("latent_dim must be divisible by num_heads")
 
         self.input_dims = input_dims
         self.seq_len = seq_len
         self.patch_sizes = tuple(int(p) for p in patch_sizes)
         self.strides = tuple(int(s) for s in strides)
         self.embed_dim = embed_dim
+        self.latent_dim = int(latent_dim)
         self.mask_ratio = mask_ratio
         self.loss_weights = tuple(float(w) for w in loss_weights)
 
@@ -214,9 +224,17 @@ class MultiScaleTimeSeriesMAE(nn.Module):
         self.scale_embeddings = nn.Parameter(torch.zeros(3, 1, 1, embed_dim))
 
         self.bridge = TransformerStack(embed_dim, bridge_depth, num_heads, mlp_ratio, dropout)
+        self.latent_projections = nn.ModuleList(
+            [
+                nn.Linear(embed_dim, self.latent_dim)
+                if self.latent_dim != embed_dim
+                else nn.Identity()
+                for _ in range(3)
+            ]
+        )
         self.decoders = nn.ModuleList(
             [
-                TransformerStack(embed_dim, decoder_depth, num_heads, mlp_ratio, dropout)
+                TransformerStack(self.latent_dim, decoder_depth, num_heads, mlp_ratio, dropout)
                 if decoder_depth > 0
                 else nn.Identity()
                 for _ in range(3)
@@ -224,7 +242,7 @@ class MultiScaleTimeSeriesMAE(nn.Module):
         )
         self.heads = nn.ModuleList(
             [
-                nn.Linear(embed_dim, patch_size * input_dims)
+                nn.Linear(self.latent_dim, patch_size * input_dims)
                 for patch_size in self.patch_sizes
             ]
         )
@@ -297,7 +315,11 @@ class MultiScaleTimeSeriesMAE(nn.Module):
         ]
 
         fused = self.bridge(torch.cat(tokens, dim=1))
-        return tuple(torch.split(fused, lengths, dim=1))  # type: ignore[return-value]
+        fused_scales = torch.split(fused, lengths, dim=1)
+        return tuple(
+            projection(z)
+            for projection, z in zip(self.latent_projections, fused_scales)
+        )  # type: ignore[return-value]
 
     def _decode_scale(
         self,
@@ -363,7 +385,13 @@ class MultiScaleTimeSeriesMAE(nn.Module):
 
 
 if __name__ == "__main__":
-    model = MultiScaleTimeSeriesMAE(input_dims=1, seq_len=128, patch_sizes=[8, 16, 32])
+    model = MultiScaleTimeSeriesMAE(
+        input_dims=1,
+        seq_len=128,
+        patch_sizes=[8, 16, 32],
+        latent_dim=64,
+    )
     x = torch.randn(2, 128, 1)
-    out = model(x, do_mask=True)
-    print(out.loss.item(), out.z1.shape, out.z2.shape, out.z3.shape)
+    loss = model(x, do_mask=True)
+    z1_fused, z2_fused, z3_fused = model.encode(x)
+    print(loss.item(), z1_fused.shape, z2_fused.shape, z3_fused.shape)
