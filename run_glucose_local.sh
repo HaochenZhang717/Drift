@@ -13,5 +13,5 @@ EXP_NAME=glucose_no_ts_encoder \
 NUM_WORKERS=4 \
 USE_FEATURE_ENCODER=0 \
 WANDB_RUN_NAME="data_loss" \
-TEMPERATURES=0.02,0.05,0.2,0.5,0.8 \
+TEMPERATURES=0.01,0.02,0.05 \
 bash train_glucose_ts_unconditional.sh
