@@ -1,12 +1,12 @@
 #!/bin/bash
-#SBATCH --job-name=mae
+#SBATCH --job-name=drift_glucose
 #SBATCH --partition=all
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=8
 #SBATCH --gres=gpu:1
 #SBATCH --mem=60G
-#SBATCH --time=10:00:00
+#SBATCH --time=3:00:00
 #SBATCH --output=/playpen-shared/haochenz/logs/slurm/%x_%j.out
 #SBATCH --error=/playpen-shared/haochenz/logs/slurm/%x_%j.err
 
