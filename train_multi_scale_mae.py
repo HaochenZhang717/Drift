@@ -8,6 +8,7 @@ masked patch reconstruction.
 
 import argparse
 import json
+import random
 from pathlib import Path
 from typing import Optional, Tuple
 
@@ -18,7 +19,10 @@ from torch.utils.data import DataLoader, TensorDataset
 
 from multi_scale_mae import MultiScaleTimeSeriesMAE
 
-import wandb
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 
 def compute_min_max(parquet_path: str, column: str) -> Tuple[float, float]:
