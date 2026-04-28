@@ -66,7 +66,7 @@ python train_multi_scale_mae.py \
   --epochs 500 \
   --val_interval 10 \
   \
-  --device cuda \
+  --device cuda:0 \
   --wandb \
   --wandb_project drifting-model-ts \
   --wandb_run_name mae_glucose_default
