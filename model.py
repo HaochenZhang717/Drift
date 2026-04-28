@@ -377,20 +377,6 @@ class DriftDiT(nn.Module):
         # Final layer
         self.final_layer = FinalLayer(hidden_size, patch_size, self.out_channels)
 
-        # Initialize weights
-        # self._init_weights()
-
-    # def _init_weights(self):
-    #     """Initialize model weights with specific strategy for adaLN-Zero."""
-    #     def _basic_init(module):
-    #         if isinstance(module, nn.Linear):
-    #             nn.init.xavier_uniform_(module.weight)
-    #             if module.bias is not None:
-    #                 nn.init.zeros_(module.bias)
-    #         elif isinstance(module, nn.Embedding):
-    #             nn.init.normal_(module.weight, std=0.02)
-    #
-    #     self.apply(_basic_init)
 
     def unpatchify(self, x: torch.Tensor) -> torch.Tensor:
         """

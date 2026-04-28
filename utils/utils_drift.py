@@ -279,63 +279,54 @@ class SampleQueue:
 
     def __init__(
         self,
-        num_classes: int,
         queue_size: int = 128,
         sample_shape: tuple = (1, 32, 32),
     ):
         """
         Args:
-            num_classes: Number of classes
             queue_size: Number of samples to cache per class
             sample_shape: Shape of each sample (C, H, W)
         """
-        self.num_classes = num_classes
         self.queue_size = queue_size
         self.sample_shape = sample_shape
 
         # Initialize queues
-        self.queues = {
-            c: torch.zeros(queue_size, *sample_shape)
-            for c in range(num_classes)
-        }
-        self.counts = {c: 0 for c in range(num_classes)}
-        self.indices = {c: 0 for c in range(num_classes)}
+        self.queues = torch.zeros(queue_size, *sample_shape)
+        self.counts = 0
+        self.indices = 0
 
-    def add(self, samples: torch.Tensor, labels: torch.Tensor):
+    def add(self, samples: torch.Tensor):
         """Add samples to the queues."""
         samples = samples.detach().cpu()
-        labels = labels.detach().cpu()
 
-        for sample, label in zip(samples, labels):
-            c = label.item()
-            idx = self.indices[c] % self.queue_size
-            self.queues[c][idx] = sample
-            self.indices[c] += 1
-            self.counts[c] = min(self.counts[c] + 1, self.queue_size)
+        for sample in samples:
+            idx = self.indices % self.queue_size
+            self.queues[idx] = sample
+            self.indices += 1
+            self.counts = min(self.counts + 1, self.queue_size)
 
-    def sample(self, label: int, n: int, device: torch.device) -> torch.Tensor:
+    def sample(self, n: int, device: torch.device) -> torch.Tensor:
         """
         Sample n examples from the queue for a given class.
 
         Args:
-            label: Class label
             n: Number of samples
             device: Device to put samples on
 
         Returns:
             Tensor of shape (n, C, H, W)
         """
-        count = self.counts[label]
+        count = self.counts
         if count == 0:
-            raise ValueError(f"No samples in queue for class {label}")
+            raise ValueError("No samples in queue")
 
         indices = torch.randint(0, count, (n,))
-        samples = self.queues[label][indices]
+        samples = self.queues[indices]
         return samples.to(device)
 
     def is_ready(self, min_samples: int = 32) -> bool:
         """Check if all queues have at least min_samples."""
-        return all(self.counts[c] >= min_samples for c in range(self.num_classes))
+        return self.counts >= min_samples
 
 
 def count_parameters(model: nn.Module) -> int:

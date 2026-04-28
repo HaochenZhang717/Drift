@@ -1,7 +1,5 @@
 """
-Training script for Drifting Models with unconditional generation.
-Includes a synthetic sine-wave time-series dataset that is transformed to images
-via delay embedding for DiT training.
+Training script for Drifting Models with unconditional glucose time-series generation.
 """
 import argparse
 import math
@@ -20,7 +18,6 @@ from torch.utils.data import DataLoader, Dataset
 
 from utils.utils_dataset import get_dataset
 
-from torchvision import datasets, transforms
 from model import DriftDiT_Tiny, DriftDiT_Small, DriftDiT_models
 from drifting import (
     compute_V,
@@ -34,12 +31,10 @@ from utils.utils_drift import (
     WarmupLRScheduler,
     SampleQueue,
     save_checkpoint,
-    load_checkpoint,
     save_image_grid,
     count_parameters,
     set_seed,
 )
-import pandas as pd
 from ts_quality_eval import (
     collect_real_time_series,
     delay_images_to_series,
@@ -52,95 +47,43 @@ try:
 except ImportError:
     wandb = None
 
+def parse_temperatures(value: str) -> list:
+    """Parse a comma-separated temperature list."""
+    temperatures = [float(item) for item in value.split(",") if item.strip()]
+    if not temperatures:
+        raise argparse.ArgumentTypeError("temperatures must contain at least one value")
+    return temperatures
 
 
-# Default hyperparameters
-TS_SINE_CONFIG = {
-    "model": "DriftDiT-Tiny",
-    "img_size": 16,  # Must match delay embedding size
-    "in_channels": 1,
-    "num_classes": 1,
-    "batch_nc": 1,
-    "batch_n_pos": 320,
-    "batch_n_neg": 320,
-    "temperatures": [0.02, 0.05, 0.2],
-    "lr": 2e-4,
-    "weight_decay": 0.01,
-    "grad_clip": 2.0,
-    "ema_decay": 0.999,
-    "warmup_steps": 1000,
-    "epochs": 100,
-    "alpha_min": 1.0,
-    "alpha_max": 1.0,
-    "use_feature_encoder": False,
-    "loss_domain": "time_series",
-    "queue_size": 1280,
-    "label_dropout": 0.0,
-    # Sine time-series synthesis + delay embedding params
-    "ts_num_samples_train": 60000,
-    "ts_num_samples_test": 10000,
-    "ts_seq_len": 128,  # Gives exactly 32 delay columns for delay=1, embedding=32
-    "ts_delay": 8,
-    "ts_embedding": 16,
-    "ts_components_min": 1,
-    "ts_components_max": 3,
-    "ts_freq_min": 1.0,
-    "ts_freq_max": 6.0,
-    "ts_amp_min": 0.2,
-    "ts_amp_max": 1.0,
-    "ts_noise_std": 0.03,
-}
-
-TS_GLUCOSE_CONFIG = {
-    "model": "DriftDiT-Tiny",
-    "img_size": 12,  # Must match delay embedding size
-    "in_channels": 1,
-    "num_classes": 1,
-    "batch_nc": 1,
-    "batch_n_pos": 320,
-    "batch_n_neg": 320,
-    "temperatures": [0.02, 0.05, 0.2],
-    "lr": 1e-4,
-    "weight_decay": 1e-4,
-    "grad_clip": 1.0,
-    "ema_decay": 0.999,
-    "warmup_steps": 1000,
-    "epochs": 100,
-    "alpha_min": 1.0,
-    "alpha_max": 1.0,
-    "use_feature_encoder": False,
-    "loss_domain": "time_series",
-    "queue_size": 1280,
-    "label_dropout": 0.0,
-    "ts_seq_len": 128,  # Gives exactly 32 delay columns for delay=1, embedding=32
-    "ts_delay": 12,
-    "ts_embedding": 12,
-    "ts_stride": 128,
-}
+def build_config(args: argparse.Namespace) -> Dict[str, Any]:
+    """Build the training config from parsed argparse values."""
+    config_keys = [
+        "model",
+        "img_size",
+        "in_channels",
+        "batch_n_pos",
+        "batch_n_neg",
+        "temperatures",
+        "lr",
+        "weight_decay",
+        "grad_clip",
+        "ema_decay",
+        "warmup_steps",
+        "epochs",
+        "use_feature_encoder",
+        "loss_domain",
+        "queue_size",
+        "ts_seq_len",
+        "ts_delay",
+        "ts_embedding",
+        "ts_stride",
+    ]
+    config = {key: getattr(args, key) for key in config_keys}
+    config["dataset"] = "glucose"
+    return config
 
 
 
-
-
-def sample_batch(
-    queue: SampleQueue,
-    num_classes: int,
-    n_pos: int,
-    device: torch.device,
-) -> tuple:
-    """Sample a batch of positive samples from the queue."""
-    x_pos_list = []
-    labels_list = []
-
-    for c in range(num_classes):
-        x_c = queue.sample(c, n_pos, device)
-        x_pos_list.append(x_c)
-        labels_list.append(torch.full((n_pos,), c, device=device, dtype=torch.long))
-
-    x_pos = torch.cat(x_pos_list, dim=0)
-    labels = torch.cat(labels_list, dim=0)
-
-    return x_pos, labels
 
 
 def _strip_module_prefix(state_dict: dict) -> dict:
@@ -201,9 +144,7 @@ def compute_drifting_loss(
 
     Args:
         x_gen: Generated samples (B, C, H, W)
-        labels_gen: Labels for generated samples (B,)
         x_pos: Positive (real) samples (B_pos, C, H, W)
-        labels_pos: Labels for positive samples (B_pos,)
         feature_encoder: Feature encoder (returns List[Tensor] for multi-scale)
         temperatures: List of temperatures for V computation
         use_pixel_space: Whether to use pixel space directly
@@ -299,14 +240,12 @@ def train_step(
     """
     Single training step (Algorithm 1).
 
-    1. Sample class labels and CFG alpha
-    2. Generate samples from noise
-    3. Sample positive samples from queue
-    4. Compute drifting field and loss
-    5. Update model
+    1. Generate samples from noise
+    2. Sample positive samples from queue
+    3. Compute drifting field and loss
+    4. Update model
     """
     model.train()
-    num_classes = config["num_classes"]
     n_pos = config["batch_n_pos"]
     n_neg = config["batch_n_neg"]
     temperatures = config["temperatures"]
@@ -329,11 +268,10 @@ def train_step(
     )
 
     # Generate samples
-    x_gen = model(noise) # (n_class*n_neg, 1, 32, 32)
+    x_gen = model(noise)
 
     # Sample positive samples from queue
-    x_pos, labels_pos = sample_batch(queue, num_classes, n_pos, device)
-    # x_pos.shape == (n_class*n_pos, 1, 32, 32)
+    x_pos = queue.sample(n_pos, device)
 
     # Compute drifting loss
     loss, info = compute_drifting_loss(
@@ -369,11 +307,11 @@ def fill_queue(
     """Fill the sample queue with real data."""
     for batch in dataloader:
         if isinstance(batch, (list, tuple)):
-            x, labels = batch[0], torch.zeros(batch[0].shape[0], dtype=torch.long)
+            x = batch[0]
         else:
-            x, labels = batch, torch.zeros(batch.shape[0], dtype=torch.long)
+            x = batch
 
-        queue.add(x, labels)
+        queue.add(x)
 
         if queue.is_ready(min_samples):
             break
@@ -388,11 +326,9 @@ def prefix_metric_results(results: Dict[str, Any], split: str) -> Dict[str, Any]
 
 
 def train(
-    dataset: str = "sine",
+    config: Dict[str, Any],
     output_dir: str = "./outputs",
     data_root: str = "./data",
-    download: bool = True,
-    resume: Optional[str] = None,
     seed: int = 42,
     num_workers: int = 1,
     log_interval: int = 1,
@@ -410,22 +346,13 @@ def train(
     metrics_base_path: Optional[str] = None,
     vae_ckpt_root: Optional[str] = None,
     ts_feature_encoder_ckpt: Optional[str] = None,
-    lr: Optional[float] = None,
-    batch_size: Optional[int] = None,
-    epochs: Optional[int] = None,
+    batch_size: int = 256,
+    argparse_config: Optional[Dict[str, Any]] = None,
 ):
     """Main training function."""
     set_seed(seed)
 
-    # Get config
-    dataset_name = dataset.lower()
-    if dataset_name in ["sine", "ts", "timeseries", "synthetic_sine"]:
-        config = TS_SINE_CONFIG.copy()
-    elif dataset_name == "glucose":
-        config = TS_GLUCOSE_CONFIG.copy()
-    else:
-        raise ValueError(f"Unsupported dataset for this script: {dataset}")
-    config["dataset"] = dataset
+    dataset = "glucose"
     metric_names = parse_metric_names(eval_metrics)
     metric_iteration = max(1, metric_iteration)
     config["eval_metrics"] = metric_names
@@ -433,10 +360,11 @@ def train(
     config["eval_num_samples"] = eval_num_samples
     config["metric_iteration"] = metric_iteration
     config["ts_feature_encoder_ckpt"] = ts_feature_encoder_ckpt
-    if lr is not None:
-        config["lr"] = lr
-    if epochs is not None:
-        config["epochs"] = epochs
+    config["train_batch_size"] = batch_size
+    if ts_feature_encoder_ckpt is not None:
+        config["use_feature_encoder"] = True
+    wandb_config = dict(argparse_config) if argparse_config is not None else dict(config)
+    wandb_config["resolved_training_config"] = dict(config)
 
     # Setup device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -456,7 +384,7 @@ def train(
                 entity=wandb_entity,
                 name=wandb_run_name,
                 mode=wandb_mode,
-                config=config,
+                config=wandb_config,
                 dir=str(output_dir),
             )
 
@@ -465,13 +393,12 @@ def train(
         dataset,
         config=config,
         root=data_root,
-        download=download,
         seed=seed,
     )
     print(f"Dataset sizes | train: {len(train_dataset)} | test: {len(test_dataset)}")
     train_loader = DataLoader(
         train_dataset,
-        batch_size=(256 if batch_size is None else batch_size),
+        batch_size=batch_size,
         shuffle=True,
         num_workers=num_workers,
         pin_memory=True,
@@ -499,7 +426,6 @@ def train(
     )
 
     # Create scheduler
-    steps_per_epoch = len(train_loader)
     scheduler = WarmupLRScheduler(
         optimizer,
         warmup_steps=config["warmup_steps"],
@@ -508,7 +434,6 @@ def train(
 
     # Create sample queue
     queue = SampleQueue(
-        num_classes=config["num_classes"],
         queue_size=config["queue_size"],
         sample_shape=(config["in_channels"], config["img_size"], config["img_size"]),
     )
@@ -524,31 +449,8 @@ def train(
         config["use_feature_encoder"] = True
         print("Using pretrained TS feature encoder for drifting loss.")
 
-    # elif config["use_feature_encoder"]:
-    #     print("Creating feature encoder...")
-    #     feature_encoder = create_feature_encoder(
-    #         dataset=dataset,
-    #         feature_dim=512,
-    #         multi_scale=True,
-    #         use_pretrained=True,  # Use ImageNet-pretrained ResNet
-    #     ).to(device)
-    #
-    #     # For pretrained ResNet, no need for MAE pre-training
-    #     # The ImageNet features work well for natural images
-    #     print("Using ImageNet-pretrained ResNet encoder")
-    #
-    #     feature_encoder.eval()
-    #     for param in feature_encoder.parameters():
-    #         param.requires_grad = False
-
-    # Resume from checkpoint
     start_epoch = 0
     global_step = 0
-    if resume:
-        checkpoint = load_checkpoint(resume, model, ema, optimizer, scheduler)
-        start_epoch = checkpoint["epoch"] + 1
-        global_step = checkpoint["step"]
-        print(f"Resumed from epoch {start_epoch}, step {global_step}")
 
     # Training loop
     print(f"\nStarting training for {config['epochs']} epochs...")
@@ -564,14 +466,11 @@ def train(
         for batch_idx, batch in enumerate(train_loader):
             if isinstance(batch, (list, tuple)):
                 x_real = batch[0].to(device)
-                labels_real = torch.zeros(x_real.shape[0], dtype=torch.long, device=device)
-
             else:
                 x_real = batch.to(device)
-                labels_real = torch.zeros(x_real.shape[0], dtype=torch.long, device=device)
 
             # Add to queue
-            queue.add(x_real.cpu(), labels_real.cpu())
+            queue.add(x_real.cpu())
 
             # Skip if queue not ready
             if not queue.is_ready(config["batch_n_pos"]):
@@ -857,13 +756,6 @@ def generate_samples(
 def main():
     parser = argparse.ArgumentParser(description="Train Drifting Models")
     parser.add_argument(
-        "--dataset",
-        type=str,
-        default="glucose",
-        choices=["sine", "glucose"],
-        help="Dataset to train on",
-    )
-    parser.add_argument(
         "--output_dir",
         type=str,
         default="./outputs/glucose_unconditional_debug",
@@ -874,17 +766,6 @@ def main():
         type=str,
         default="./AI-READI",
         help="Dataset root directory",
-    )
-    parser.add_argument(
-        "--no_download",
-        action="store_true",
-        help="Disable automatic dataset download",
-    )
-    parser.add_argument(
-        "--resume",
-        type=str,
-        default=None,
-        help="Path to checkpoint to resume from",
     )
     parser.add_argument(
         "--seed",
@@ -991,39 +872,40 @@ def main():
         help="Path to pretrained TS encoder checkpoint (full_series_ts2vec_glucose.pt).",
     )
     parser.add_argument(
-        "--glucose_stride",
-        type=int,
-        default=TS_GLUCOSE_CONFIG["ts_stride"],
-        help="Sliding-window stride for the Glucose dataset",
-    )
-    parser.add_argument(
-        "--lr",
-        type=float,
-        default=None,
-        help="Override learning rate from dataset config.",
-    )
-    parser.add_argument(
         "--batch_size",
         type=int,
-        default=None,
-        help="Override training DataLoader batch size (default: 256).",
+        default=256,
+        help="Training DataLoader batch size.",
     )
-    parser.add_argument(
-        "--epochs",
-        type=int,
-        default=None,
-        help="Override total training epochs from dataset config.",
-    )
+
+    parser.add_argument("--model", type=str, default="DriftDiT-Tiny", choices=sorted(DriftDiT_models.keys()))
+    parser.add_argument("--img_size", type=int, default=12)
+    parser.add_argument("--in_channels", type=int, default=1)
+    parser.add_argument("--batch_n_pos", type=int, default=320)
+    parser.add_argument("--batch_n_neg", type=int, default=320)
+    parser.add_argument("--temperatures", type=parse_temperatures, default=[0.02, 0.05, 0.2])
+    parser.add_argument("--lr", type=float, default=1e-4)
+    parser.add_argument("--weight_decay", type=float, default=1e-4)
+    parser.add_argument("--grad_clip", type=float, default=1.0)
+    parser.add_argument("--ema_decay", type=float, default=0.999)
+    parser.add_argument("--warmup_steps", type=int, default=1000)
+    parser.add_argument("--epochs", type=int, default=100)
+    parser.add_argument("--use_feature_encoder", action="store_true")
+    parser.add_argument("--loss_domain", type=str, default="time_series", choices=["time_series"])
+    parser.add_argument("--queue_size", type=int, default=1280)
+
+    parser.add_argument("--ts_seq_len", type=int, default=128)
+    parser.add_argument("--ts_delay", type=int, default=12)
+    parser.add_argument("--ts_embedding", type=int, default=12)
+    parser.add_argument("--ts_stride", "--glucose_stride", dest="ts_stride", type=int, default=128)
 
     args = parser.parse_args()
-    TS_GLUCOSE_CONFIG["ts_stride"] = args.glucose_stride
+    config = build_config(args)
 
     train(
-        dataset=args.dataset,
+        config=config,
         output_dir=args.output_dir,
         data_root=args.data_root,
-        download=not args.no_download,
-        resume=args.resume,
         seed=args.seed,
         num_workers=args.num_workers,
         log_interval=args.log_interval,
@@ -1041,9 +923,8 @@ def main():
         metrics_base_path=args.metrics_base_path,
         vae_ckpt_root=args.vae_ckpt_root,
         ts_feature_encoder_ckpt=args.ts_feature_encoder_ckpt,
-        lr=args.lr,
         batch_size=args.batch_size,
-        epochs=args.epochs,
+        argparse_config=vars(args),
     )
 
 
