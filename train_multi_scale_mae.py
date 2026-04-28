@@ -9,9 +9,10 @@ masked patch reconstruction.
 import argparse
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Tuple
 
 import numpy as np
+import pandas as pd
 import torch
 from torch.utils.data import DataLoader, TensorDataset
 
