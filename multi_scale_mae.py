@@ -232,9 +232,19 @@ class MultiScaleTimeSeriesMAE(nn.Module):
                 for _ in range(3)
             ]
         )
+
+        self.latent_projections_back = nn.ModuleList(
+            [
+                nn.Linear(self.latent_dim, embed_dim)
+                if self.latent_dim != embed_dim
+                else nn.Identity()
+                for _ in range(3)
+            ]
+        )
+
         self.decoders = nn.ModuleList(
             [
-                TransformerStack(self.latent_dim, decoder_depth, num_heads, mlp_ratio, dropout)
+                TransformerStack(embed_dim, decoder_depth, num_heads, mlp_ratio, dropout)
                 if decoder_depth > 0
                 else nn.Identity()
                 for _ in range(3)
@@ -242,25 +252,10 @@ class MultiScaleTimeSeriesMAE(nn.Module):
         )
         self.heads = nn.ModuleList(
             [
-                nn.Linear(self.latent_dim, patch_size * input_dims)
+                nn.Linear(embed_dim, patch_size * input_dims)
                 for patch_size in self.patch_sizes
             ]
         )
-
-        self._init_weights()
-
-    def _init_weights(self) -> None:
-        nn.init.normal_(self.mask_tokens, std=0.02)
-        nn.init.normal_(self.scale_embeddings, std=0.02)
-        for module in self.modules():
-            if isinstance(module, nn.Linear):
-                nn.init.xavier_uniform_(module.weight)
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
-            elif isinstance(module, nn.Conv1d):
-                nn.init.kaiming_normal_(module.weight, nonlinearity="linear")
-                if module.bias is not None:
-                    nn.init.zeros_(module.bias)
 
     def _encode_scale(
         self,
@@ -366,9 +361,9 @@ class MultiScaleTimeSeriesMAE(nn.Module):
 
         z1_fused, z2_fused, z3_fused = self._bridge((z1, z2, z3))
 
-        pred1 = self._decode_scale(z1_fused, 0)
-        pred2 = self._decode_scale(z2_fused, 1)
-        pred3 = self._decode_scale(z3_fused, 2)
+        pred1 = self._decode_scale(self.latent_projections_back[0](z1_fused), 0)
+        pred2 = self._decode_scale(self.latent_projections_back[1](z2_fused), 1)
+        pred3 = self._decode_scale(self.latent_projections_back[2](z3_fused), 2)
 
 
         loss1 = self._scale_loss(x, pred1, mask1, 0)
