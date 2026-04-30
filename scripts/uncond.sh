@@ -87,10 +87,6 @@ python train_ts_uncond_daily.py \
     --loss_domain time_series \
     --queue_size 1280 \
     \
-    --alpha_min 1.0 \
-    --alpha_max 1.0 \
-    --cfg_sample_alpha 1.0 \
-    \
     --ts_seq_len 288 \
     --ts_delay 18 \
     --ts_embedding 18 \
