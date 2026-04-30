@@ -108,4 +108,4 @@ python train_ts_uncond_daily.py \
     \
     --wandb \
     --wandb_project drifting-model-ts \
-    --wandb_run_name glucose_cls_cond
+    --wandb_run_name glucose_uncond
