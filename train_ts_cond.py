@@ -21,7 +21,7 @@ from img_transformations import DelayEmbedder
 from utils.utils_dataset import AI_READI_STUDY_GROUPS, get_dataset
 from models.cls_cond_model import DriftDiT_models
 from drifting import compute_V
-from feature_extractors.ts2vec.models.encoder import TSEncoder
+# from feature_extractors.ts2vec.models.encoder import TSEncoder
 from utils.utils_drift import (
     EMA,
     WarmupLRScheduler,
@@ -148,36 +148,36 @@ def _strip_module_prefix(state_dict: dict) -> dict:
     return {k[len("module."):]: v for k, v in state_dict.items()}
 
 
-def load_ts_feature_encoder_from_ckpt(
-    ckpt_path: str,
-    device: torch.device,
-) -> nn.Module:
-    """Load a frozen TS encoder checkpoint saved by full-series TS2Vec training."""
-    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    metadata = ckpt.get("metadata", {})
-    required = ["input_dims", "output_dims", "hidden_dims", "depth", "mask_prob"]
-    missing = [key for key in required if key not in metadata]
-    if missing:
-        raise ValueError(
-            f"Missing fields {missing} in TS encoder checkpoint metadata at {ckpt_path}"
-        )
-
-    encoder = TSEncoder(
-        input_dims=metadata["input_dims"],
-        output_dims=metadata["output_dims"],
-        hidden_dims=metadata["hidden_dims"],
-        depth=metadata["depth"],
-        mask_prob=metadata["mask_prob"],
-    ).to(device)
-
-    state_dict = ckpt.get("model_state_dict")
-    if state_dict is None:
-        raise ValueError(f"Checkpoint at {ckpt_path} does not contain model_state_dict")
-    encoder.load_state_dict(_strip_module_prefix(state_dict), strict=True)
-    encoder.eval()
-    for param in encoder.parameters():
-        param.requires_grad = False
-    return encoder
+# def load_ts_feature_encoder_from_ckpt(
+#     ckpt_path: str,
+#     device: torch.device,
+# ) -> nn.Module:
+#     """Load a frozen TS encoder checkpoint saved by full-series TS2Vec training."""
+#     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+#     metadata = ckpt.get("metadata", {})
+#     required = ["input_dims", "output_dims", "hidden_dims", "depth", "mask_prob"]
+#     missing = [key for key in required if key not in metadata]
+#     if missing:
+#         raise ValueError(
+#             f"Missing fields {missing} in TS encoder checkpoint metadata at {ckpt_path}"
+#         )
+#
+#     encoder = TSEncoder(
+#         input_dims=metadata["input_dims"],
+#         output_dims=metadata["output_dims"],
+#         hidden_dims=metadata["hidden_dims"],
+#         depth=metadata["depth"],
+#         mask_prob=metadata["mask_prob"],
+#     ).to(device)
+#
+#     state_dict = ckpt.get("model_state_dict")
+#     if state_dict is None:
+#         raise ValueError(f"Checkpoint at {ckpt_path} does not contain model_state_dict")
+#     encoder.load_state_dict(_strip_module_prefix(state_dict), strict=True)
+#     encoder.eval()
+#     for param in encoder.parameters():
+#         param.requires_grad = False
+#     return encoder
 
 
 def make_delay_embedder(config: dict, device: torch.device) -> DelayEmbedder:
@@ -239,23 +239,24 @@ def compute_drifting_loss(
         feat_gen_list = [rep_gen.flatten(start_dim=1)]
         feat_pos_list = [rep_pos.flatten(start_dim=1)]
     else:
-        feat_gen_seq = feature_encoder(rep_gen, mask="all_true")
-        with torch.no_grad():
-            feat_pos_seq = feature_encoder(rep_pos, mask="all_true")
-
-        if not isinstance(feature_encoder, TSEncoder):
-            raise ValueError("feature_encoder must be an instance of [TSEncoder,]")
-
-        feat_gen = F.max_pool1d(
-            feat_gen_seq.transpose(1, 2),
-            kernel_size=feat_gen_seq.size(1),
-        ).squeeze(-1)
-        feat_pos = F.max_pool1d(
-            feat_pos_seq.transpose(1, 2),
-            kernel_size=feat_pos_seq.size(1),
-        ).squeeze(-1)
-        feat_gen_list = [F.normalize(feat_gen, p=2, dim=1)]
-        feat_pos_list = [F.normalize(feat_pos, p=2, dim=1)]
+        raise NotImplementedError
+        # feat_gen_seq = feature_encoder(rep_gen, mask="all_true")
+        # with torch.no_grad():
+        #     feat_pos_seq = feature_encoder(rep_pos, mask="all_true")
+        #
+        # if not isinstance(feature_encoder, TSEncoder):
+        #     raise ValueError("feature_encoder must be an instance of [TSEncoder,]")
+        #
+        # feat_gen = F.max_pool1d(
+        #     feat_gen_seq.transpose(1, 2),
+        #     kernel_size=feat_gen_seq.size(1),
+        # ).squeeze(-1)
+        # feat_pos = F.max_pool1d(
+        #     feat_pos_seq.transpose(1, 2),
+        #     kernel_size=feat_pos_seq.size(1),
+        # ).squeeze(-1)
+        # feat_gen_list = [F.normalize(feat_gen, p=2, dim=1)]
+        # feat_pos_list = [F.normalize(feat_pos, p=2, dim=1)]
 
     total_loss = torch.tensor(0.0, device=device, requires_grad=True)
     total_drift_norm = 0.0
@@ -268,24 +269,25 @@ def compute_drifting_loss(
             continue
 
         for feat_gen, feat_pos in zip(feat_gen_list, feat_pos_list):
-            feat_gen_c = F.normalize(feat_gen[mask_gen], p=2, dim=1)
-            feat_pos_c = F.normalize(feat_pos[mask_pos], p=2, dim=1)
-            feat_neg_c = feat_gen_c
-
-            V_total = torch.zeros_like(feat_gen_c)
+            # Negatives: generated samples (following Algorithm 1: y_neg = x)
+            feat_neg = feat_gen
+            # Compute V with multiple temperatures
+            V_total = torch.zeros_like(feat_gen)
             for tau in temperatures:
                 V_tau = compute_V(
-                    feat_gen_c,
-                    feat_pos_c,
-                    feat_neg_c,
+                    feat_gen,
+                    feat_pos,
+                    feat_neg,
                     tau,
                     mask_self=True,
                 )
                 v_norm = torch.sqrt(torch.mean(V_tau ** 2) + 1e-8)
-                V_total = V_total + V_tau / (v_norm + 1e-8)
+                V_tau = V_tau / (v_norm + 1e-8)
+                V_total = V_total + V_tau
 
-            target = (feat_gen_c + V_total).detach()
+            target = (feat_gen + V_total).detach()
             loss_scale = F.mse_loss(feat_gen_c, target)
+
             total_loss = total_loss + loss_scale
             total_drift_norm += (V_total ** 2).mean().item() ** 0.5
             num_losses += 1
@@ -526,12 +528,13 @@ def train(
 
     feature_encoder = None
     if ts_feature_encoder_ckpt is not None:
-        print(f"Loading time-series feature encoder from {ts_feature_encoder_ckpt}")
-        feature_encoder = load_ts_feature_encoder_from_ckpt(
-            ts_feature_encoder_ckpt,
-            device,
-        )
-        print("Using pretrained TS feature encoder for drifting loss.")
+        raise NotImplementedError("ts_feature_encoder_ckpt is not implemented.")
+        # print(f"Loading time-series feature encoder from {ts_feature_encoder_ckpt}")
+        # feature_encoder = load_ts_feature_encoder_from_ckpt(
+        #     ts_feature_encoder_ckpt,
+        #     device,
+        # )
+        # print("Using pretrained TS feature encoder for drifting loss.")
 
     global_step = 0
     print(f"\nStarting training for {config['epochs']} epochs...")
