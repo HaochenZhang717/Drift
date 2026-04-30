@@ -18,7 +18,7 @@ from torch.utils.data import DataLoader, Dataset
 
 from utils.utils_dataset import get_dataset
 
-from model import DriftDiT_Tiny, DriftDiT_Small, DriftDiT_models
+from models.unconditional_model import DriftDiT_Tiny, DriftDiT_Small, DriftDiT_models
 from drifting import (
     compute_V,
     normalize_features,
