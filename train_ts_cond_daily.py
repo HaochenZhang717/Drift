@@ -128,6 +128,7 @@ def build_config(args: argparse.Namespace) -> Dict[str, Any]:
         "include_participant_metadata",
         "include_study_group",
         "include_clinical_site",
+        "eval_per_class_samples",
     ]
     config = {key: getattr(args, key) for key in config_keys}
     config["dataset"] = "aireadi_imputation"
@@ -871,6 +872,18 @@ def collect_real_time_series_and_labels(
     )
 
 
+def select_fixed_count(series: torch.Tensor, n: int) -> torch.Tensor:
+    """Select exactly n samples deterministically, repeating if needed."""
+    count = series.shape[0]
+    if count <= 0:
+        raise ValueError("Cannot select samples from an empty tensor.")
+    if count >= n:
+        indices = torch.linspace(0, count - 1, steps=n).long()
+        return series[indices]
+    repeats = math.ceil(n / count)
+    return series.repeat((repeats, 1, 1))[:n]
+
+
 def save_real_time_series_samples(
     dataset: Dataset,
     config: dict,
@@ -1007,6 +1020,58 @@ def evaluate_conditional_time_series_metrics(
             VAE_FID(real_sig, gen_sig, vae_dataset, device, vae_ckpt_root=vae_ckpt_root)
         )
 
+        per_class_samples = int(config.get("eval_per_class_samples", 1000))
+        real_all, labels_all = collect_real_time_series_and_labels(
+            test_dataset,
+            config,
+            num_samples=len(test_dataset),
+            num_workers=num_workers,
+        )
+        results["metric/class_eval_num_samples"] = per_class_samples
+
+        class_dir = None
+        if output_dir is not None and step is not None:
+            class_dir = output_dir / "class_vae_fid"
+            class_dir.mkdir(parents=True, exist_ok=True)
+
+        for class_id, class_name in enumerate(config["study_group_names"]):
+            class_real_all = real_all[labels_all == class_id]
+            available = int(class_real_all.shape[0])
+            results[f"metric/vae_fid_class_{class_id}_real_available"] = available
+            if available == 0:
+                continue
+
+            class_real = select_fixed_count(class_real_all, per_class_samples)
+            class_labels = torch.full(
+                (per_class_samples,),
+                class_id,
+                dtype=torch.long,
+            )
+            class_gen = generate_conditioned_time_series_samples(
+                model,
+                config,
+                device,
+                class_labels,
+                alpha=config["cfg_sample_alpha"],
+            )
+
+            class_real_np = class_real.numpy().astype(np.float32)
+            class_gen_np = class_gen.numpy().astype(np.float32)
+            safe_name = class_name.replace("/", "_")
+            results[f"metric/vae_fid_class_{class_id}_{safe_name}"] = float(
+                VAE_FID(
+                    class_real_np,
+                    class_gen_np,
+                    vae_dataset,
+                    device,
+                    vae_ckpt_root=vae_ckpt_root,
+                )
+            )
+
+            if class_dir is not None:
+                np.save(class_dir / f"real_class_{class_id}_step{step}.npy", class_real_np)
+                np.save(class_dir / f"generated_class_{class_id}_step{step}.npy", class_gen_np)
+
     return results
 
 
@@ -1022,6 +1087,12 @@ def main():
     parser.add_argument("--eval_step_interval", "--eval_interval", dest="eval_step_interval", type=int, default=500)
     parser.add_argument("--eval_metrics", type=str, default="disc")
     parser.add_argument("--eval_num_samples", type=int, default=None)
+    parser.add_argument(
+        "--eval_per_class_samples",
+        type=int,
+        default=1000,
+        help="Number of real/generated samples per class for class-wise vaeFID.",
+    )
     parser.add_argument("--metric_iteration", type=int, default=10)
     parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--wandb_project", type=str, default="drifting-model-ts")

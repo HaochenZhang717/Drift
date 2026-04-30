@@ -48,33 +48,31 @@ PARTICIPANTS_TSV=/playpen-shared/mshuang/morris/morris/d9ef6cf1-f6c3-4956-a91e-a
 
 
 PROJECT_ROOT=/playpen-shared/haochenz/Drift
-OUTPUT_DIR=${PROJECT_ROOT}/outputs/glucose_uncond_daily
+OUTPUT_DIR=${PROJECT_ROOT}/outputs/glucose_cls_cond_cfg
 VAE_ROOT=${PROJECT_ROOT}/fid_vae_ckpts
 
 
 # =========================
 # 训练参数
 # =========================
-BATCH_SIZE=256
 EPOCHS=500
 
 # =========================
 # 运行
 # =========================
-python train_ts_uncond_daily.py \
+python train_ts_cond_daily.py \
     --output_dir ${OUTPUT_DIR} \
     --data_root ${DATA_ROOT} \
-    --seed 42 \
     --num_workers 16 \
-    --batch_size ${BATCH_SIZE} \
+    --batch_size 256 \
     --epochs ${EPOCHS} \
     \
     --model DriftDiT-Tiny \
     --img_size 18 \
     --in_channels 1 \
     \
-    --batch_n_pos 640 \
-    --batch_n_neg 640 \
+    --batch_n_pos 160 \
+    --batch_n_neg 160 \
     --temperatures 0.02,0.05,0.2 \
     \
     --lr 1e-4 \
@@ -86,6 +84,11 @@ python train_ts_uncond_daily.py \
     \
     --loss_domain time_series \
     --queue_size 1280 \
+    \
+    --label_dropout 0.1 \
+    --alpha_min 1.0 \
+    --alpha_max 3.0 \
+    --cfg_sample_alpha 1.5 \
     \
     --ts_seq_len 288 \
     --ts_delay 18 \
@@ -103,10 +106,11 @@ python train_ts_uncond_daily.py \
     \
     --eval_metrics vaeFID \
     --eval_num_samples 1000 \
+    --eval_per_class_samples 1000 \
     --eval_step_interval 500 \
     \
     --vae_ckpt_root ${VAE_ROOT} \
     \
     --wandb \
     --wandb_project drifting-model-ts \
-    --wandb_run_name glucose_uncond
+    --wandb_run_name glucose_cls_cond_cfg

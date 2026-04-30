@@ -937,7 +937,9 @@ def evaluate_unconditional_time_series_metrics(
     step: Optional[int] = None,
 ) -> Dict[str, Any]:
     """Run time-series metrics for unconditional AI-READI glucose generation."""
-    eval_size = len(test_dataset) if num_samples is None else min(num_samples, len(test_dataset))
+    if num_samples is None:
+        num_samples = int(config.get("eval_num_samples") or 1000)
+    eval_size = min(num_samples, len(test_dataset))
     real_sig = collect_real_time_series(
         test_dataset,
         config,
@@ -1058,8 +1060,8 @@ def main():
     parser.add_argument(
         "--eval_num_samples",
         type=int,
-        default=None,
-        help="Number of real/generated samples for metrics. Defaults to the full test set.",
+        default=1000,
+        help="Number of real/generated samples for metrics.",
     )
     parser.add_argument(
         "--metric_iteration",
