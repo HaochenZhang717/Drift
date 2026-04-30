@@ -61,9 +61,11 @@ EPOCHS=500
 # =========================
 # 运行
 # =========================
-python train_ts_cond_daily.py \
+python train_ts_uncond_daily.py \
     --output_dir ${OUTPUT_DIR} \
     --data_root ${DATA_ROOT} \
+    --seed 42 \
+    --num_workers 16 \
     --batch_size ${BATCH_SIZE} \
     --epochs ${EPOCHS} \
     \
@@ -71,8 +73,8 @@ python train_ts_cond_daily.py \
     --img_size 18 \
     --in_channels 1 \
     \
-    --batch_n_pos 160 \
-    --batch_n_neg 160 \
+    --batch_n_pos 640 \
+    --batch_n_neg ${BATCH_SIZE} \
     --temperatures 0.02,0.05,0.2 \
     \
     --lr 1e-4 \
