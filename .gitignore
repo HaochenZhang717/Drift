@@ -9,6 +9,8 @@ build/
 # Data
 AI-READI/
 
+fid_vae_ckpts/
+
 data/
 *.pt
 *.pth
