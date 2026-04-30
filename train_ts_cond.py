@@ -286,7 +286,7 @@ def compute_drifting_loss(
                 V_total = V_total + V_tau
 
             target = (feat_gen + V_total).detach()
-            loss_scale = F.mse_loss(feat_gen_c, target)
+            loss_scale = F.mse_loss(feat_gen, target)
 
             total_loss = total_loss + loss_scale
             total_drift_norm += (V_total ** 2).mean().item() ** 0.5
