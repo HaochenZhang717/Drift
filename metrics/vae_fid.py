@@ -36,6 +36,7 @@ _DATASET_TO_CKPT_DIR = {
     "Weather": "vae_weather",
     "weather": "vae_weather",
     "glucose": "vae_glucose",
+    "glucose_daily": "vae_glucose_daily",
 }
 
 

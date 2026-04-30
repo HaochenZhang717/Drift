@@ -990,8 +990,9 @@ def evaluate_conditional_time_series_metrics(
     if "vaeFID" in eval_metrics:
         from metrics.vae_fid import VAE_FID
 
+        vae_dataset = "glucose_daily" if config.get("window_mode") == "daily" else "glucose"
         results["metric/vae_fid"] = float(
-            VAE_FID(real_sig, gen_sig, "glucose", device, vae_ckpt_root=vae_ckpt_root)
+            VAE_FID(real_sig, gen_sig, vae_dataset, device, vae_ckpt_root=vae_ckpt_root)
         )
 
     return results

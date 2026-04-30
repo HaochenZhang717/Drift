@@ -56,7 +56,7 @@ VAE_ROOT=${PROJECT_ROOT}/fid_vae_ckpts
 # 训练参数
 # =========================
 BATCH_SIZE=256
-EPOCHS=100
+EPOCHS=500
 
 # =========================
 # 运行
@@ -71,8 +71,8 @@ python train_ts_cond.py \
     --img_size 18 \
     --in_channels 1 \
     \
-    --batch_n_pos 80 \
-    --batch_n_neg 80 \
+    --batch_n_pos 160 \
+    --batch_n_neg 160 \
     --temperatures 0.02,0.05,0.2 \
     \
     --lr 1e-4 \

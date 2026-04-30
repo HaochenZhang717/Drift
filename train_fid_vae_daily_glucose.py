@@ -97,7 +97,7 @@ def load_dataset(npy_path, scaler=None):
 
     data = torch.tensor(data, dtype=torch.float32).permute(0, 2, 1)
 
-    print(f"Loaded {npy_path}: {data.shape}")
+    print(f"Loaded {npy_path}: {data.shape}", flush=True)
 
     return TensorDataset(data)
 
@@ -185,7 +185,8 @@ def load_daily_glucose_datasets(args):
         f"Loaded daily AI-READI glucose | "
         f"train: {len(train_dataset)} | val: {len(val_dataset)} | "
         f"sample: {tuple(sample.shape)} | "
-        f"normalized: {not args.raw_glucose} | extra_scale: {args.scale}"
+        f"normalized: {not args.raw_glucose} | extra_scale: {args.scale}",
+        flush=True,
     )
     return train_dataset, val_dataset, scaler, train_base
 
@@ -201,7 +202,7 @@ def train_one_epoch(model, dataloader, optimizer, device):
     total_recon = 0
     total_kl = 0
 
-    pbar = tqdm(dataloader, desc="Train")
+    pbar = tqdm(dataloader, desc="Train", file=sys.stdout)
 
     for batch in pbar:
         x = batch[0].to(device)
@@ -332,7 +333,7 @@ def train(args):
     # =========================
     for epoch in range(args.epochs):
 
-        print(f"\n===== Epoch {epoch} =====")
+        print(f"\n===== Epoch {epoch} =====", flush=True)
 
         train_loss, train_recon, train_kl = train_one_epoch(
             model, train_loader, optimizer, device
@@ -343,8 +344,8 @@ def train(args):
         )
 
         # ===== print =====
-        print(f"\nTrain Loss: {train_loss:.6f} | Recon: {train_recon:.6f} | KL: {train_kl:.6f}")
-        print(f"Val   Loss: {val_loss:.6f} | Recon: {val_recon:.6f} | KL: {val_kl:.6f}")
+        print(f"\nTrain Loss: {train_loss:.6f} | Recon: {train_recon:.6f} | KL: {train_kl:.6f}", flush=True)
+        print(f"Val   Loss: {val_loss:.6f} | Recon: {val_recon:.6f} | KL: {val_kl:.6f}", flush=True)
 
         # ===== save last =====
         torch.save(
@@ -359,7 +360,7 @@ def train(args):
                 model.state_dict(),
                 os.path.join(args.save_dir, "best.pt")
             )
-            print("Saved BEST model")
+            print("Saved BEST model", flush=True)
 
 # =========================
 # Main
