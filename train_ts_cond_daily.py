@@ -268,25 +268,37 @@ def compute_drifting_loss(
         if not mask_gen.any() or not mask_pos.any():
             continue
 
-        for feat_gen, feat_pos in zip(feat_gen_list, feat_pos_list):
-            # Negatives: generated samples (following Algorithm 1: y_neg = x)
-            feat_neg = feat_gen
+        # Compute loss at each scale
+        for scale_idx, (feat_gen, feat_pos) in enumerate(zip(feat_gen_list, feat_pos_list)):
+            feat_gen_c = feat_gen[mask_gen]
+            feat_pos_c = feat_pos[mask_pos]
+
+            # Negatives: generated samples from current class (following Algorithm 1: y_neg = x)
+            feat_neg_c = feat_gen_c
+
+            # Simple L2 normalization (projects to unit sphere)
+            feat_gen_c_norm = feat_gen_c
+            feat_pos_c_norm = feat_pos_c
+            feat_neg_c_norm = feat_neg_c
+
             # Compute V with multiple temperatures
-            V_total = torch.zeros_like(feat_gen)
+            V_total = torch.zeros_like(feat_gen_c_norm)
             for tau in temperatures:
                 V_tau = compute_V(
-                    feat_gen,
-                    feat_pos,
-                    feat_neg,
+                    feat_gen_c_norm,
+                    feat_pos_c_norm,
+                    feat_neg_c_norm,
                     tau,
-                    mask_self=True,
+                    mask_self=True,  # y_neg = x, so mask self
                 )
+                # Normalize each V before summing
                 v_norm = torch.sqrt(torch.mean(V_tau ** 2) + 1e-8)
                 V_tau = V_tau / (v_norm + 1e-8)
                 V_total = V_total + V_tau
 
-            target = (feat_gen + V_total).detach()
-            loss_scale = F.mse_loss(feat_gen, target)
+            # Loss: MSE(phi(x), stopgrad(phi(x) + V))
+            target = (feat_gen_c_norm + V_total).detach()
+            loss_scale = F.mse_loss(feat_gen_c_norm, target)
 
             total_loss = total_loss + loss_scale
             total_drift_norm += (V_total ** 2).mean().item() ** 0.5
