@@ -143,31 +143,8 @@ def compute_drifting_loss(
     temperatures: list,
     ts_loss_config: Optional[dict] = None,
 ) -> tuple:
-    """
-    Compute class-conditional drifting loss with multi-scale features.
 
-    Following paper Section A.5: compute drifting loss at each scale, then sum.
-
-    Args:
-        x_gen: Generated samples (B, C, H, W)
-        x_pos: Positive (real) samples (B_pos, C, H, W)
-        feature_encoder: Feature encoder (returns List[Tensor] for multi-scale)
-        temperatures: List of temperatures for V computation
-        use_pixel_space: Whether to use pixel space directly
-        spatial_mask: Optional mask with 1.0 on valid regions and 0.0 on padding
-        ts_loss_config: If provided, convert delay-embedding images back to
-            time-series and compute the loss in that domain.
-
-    Returns:
-        loss: Scalar loss
-        info: Dict with metrics
-    """
     device = x_gen.device
-    # Two primary branches:
-    # 1) no feature encoder -> convert image to time series and use flattened
-    #    sequence vectors;
-    # 2) with feature encoder -> convert image to time series, then extract
-    #    deterministic full-series features from the encoder.
 
     rep_gen = delay_images_to_series(x_gen, ts_loss_config, device)
     rep_pos = delay_images_to_series(x_pos, ts_loss_config, device)
@@ -201,28 +178,39 @@ def compute_drifting_loss(
     total_loss = torch.tensor(0.0, device=device, requires_grad=True)
     total_drift_norm = 0.0
     total_v_norm = 0.0
+    total_true_v_norm = 0.0   # ✅ 新增
 
-    # Compute loss at each scale
     for scale_idx, (feat_gen, feat_pos) in enumerate(zip(feat_gen_list, feat_pos_list)):
-        # Negatives: generated samples (following Algorithm 1: y_neg = x)
+
         feat_neg = feat_gen
-        # Compute V with multiple temperatures
-        V_total = torch.zeros_like(feat_gen)
+
+        V_total = torch.zeros_like(feat_gen)        # normalized（训练用）
+        V_total_raw = torch.zeros_like(feat_gen)    # ✅ raw V（log 用）
+
         for tau in temperatures:
             V_tau = compute_V(
                 feat_gen,
                 feat_pos,
                 feat_neg,
                 tau,
-                mask_self=True,  # y_neg = x, so mask self
+                mask_self=True,
             )
-            # Normalize each V before summing
+
+            # ✅ 累积 raw V（关键！！！）
+            V_total_raw = V_total_raw + V_tau
+
+            # ===== 原逻辑（不要改）=====
             v_norm = torch.sqrt(torch.mean(V_tau ** 2) + 1e-8)
             V_tau = V_tau / (v_norm + 1e-8)
+
             V_total = V_total + V_tau
             total_v_norm += v_norm.item()
 
-        # Loss: MSE(phi(x), stopgrad(phi(x) + V))
+        # ===== 计算真实 drift norm =====
+        true_v_norm = torch.sqrt(torch.mean(V_total_raw ** 2) + 1e-8)
+        total_true_v_norm += true_v_norm.item()
+
+        # ===== 原 loss =====
         target = (feat_gen + V_total).detach()
         loss_scale = F.mse_loss(feat_gen, target)
 
@@ -232,7 +220,8 @@ def compute_drifting_loss(
     info = {
         "loss": total_loss.item(),
         "drift_norm": total_drift_norm,
-        "v_norm": total_v_norm,
+        "v_norm": total_v_norm,                   # 原来的
+        "true_v_norm": total_true_v_norm,         # ✅ 新的（最重要）
     }
 
     return total_loss, info
@@ -558,13 +547,23 @@ def train(
             lr = scheduler.get_lr()
             if wandb_run is not None:
                 # Log |V| every step so the trend can be visualized like toy examples.
+                # wandb.log(
+                #     {
+                #         "train/v_norm_step": info["v_norm"],
+                #         # "train/v_norm_step_ema": v_norm_ema,
+                #     },
+                #     step=global_step,
+                # )
+
                 wandb.log(
                     {
                         "train/v_norm_step": info["v_norm"],
-                        # "train/v_norm_step_ema": v_norm_ema,
+                        "train/v_norm_step_ema": v_norm_ema,
+                        "train/true_v_norm_step": info["true_v_norm"],  # ✅ 新增
                     },
                     step=global_step,
                 )
+
 
             # Logging
             if global_step % log_interval == 0:
