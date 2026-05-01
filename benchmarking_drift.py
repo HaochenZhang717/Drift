@@ -170,7 +170,7 @@ def compute_drifting_loss(
 
     rep_gen = delay_images_to_series(x_gen, ts_loss_config, device)
     rep_pos = delay_images_to_series(x_pos, ts_loss_config, device)
-    breakpoint()
+
     if feature_encoder is None:
         feat_gen_list = [rep_gen.flatten(start_dim=1)]
         feat_pos_list = [rep_pos.flatten(start_dim=1)]
@@ -271,7 +271,7 @@ def train_step(
         config["img_size"],
         device=device,
     )
-    breakpoint()
+
     # Generate samples
     x_gen = model(noise)
 
