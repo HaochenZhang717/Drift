@@ -406,8 +406,8 @@ def train(
     config["metric_iteration"] = metric_iteration
     config["ts_feature_encoder_ckpt"] = ts_feature_encoder_ckpt
     config["train_batch_size"] = batch_size
-    # config["dataset"] = config["dataset_name"]
-    config["dataset"] = config["data"]
+    config["dataset"] = config["dataset_name"]
+    # config["dataset"] = config["data"]
 
     eval_splits = eval_splits or ["train", "test"]
     if ts_feature_encoder_ckpt is not None:
