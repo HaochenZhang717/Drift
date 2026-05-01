@@ -561,6 +561,7 @@ def train(
                         {
                             "train/loss": info["loss"],
                             "train/drift_norm": info["drift_norm"],
+                            "train/v_norm": info["v_norm"],
                             "train/grad_norm": info["grad_norm"],
                             "train/lr": lr,
                             "train/epoch": epoch + 1,

@@ -56,7 +56,7 @@ IN_CHANNEL=${IN_CHANNEL-7}
 
 #PROJECT_ROOT="/Users/zhc/Documents/PhD/projects/drifting-model"
 PROJECT_ROOT="/playpen-shared/haochenz/Drift"
-OUTPUT_DIR="${PROJECT_ROOT}/outputs/${DATA_BACKEND}"
+OUTPUT_DIR="${PROJECT_ROOT}/outputs/benchmark/${DATA_BACKEND}"
 VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts"
 
 
@@ -114,5 +114,5 @@ python benchmarking_drift.py \
     --vae_ckpt_root "${VAE_ROOT}" \
     \
     --wandb \
-    --wandb_project drifting-model-ts \
-    --wandb_run_name glucose_uncond
+    --wandb_project BenchmarkingDrift \
+    --wandb_run_name ${DATASET_NAME}
