@@ -7,6 +7,7 @@ import os
 import time
 from pathlib import Path
 from typing import Dict, Any, Optional
+import random
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -500,6 +501,8 @@ def train(
 
     start_epoch = 0
     global_step = 0
+    # v_norm_ema = None
+    # v_norm_ema_decay = 0.98
 
     # Training loop
     print(f"\nStarting training for {config['epochs']} epochs...")
@@ -544,15 +547,33 @@ def train(
             epoch_drift_norm += info["drift_norm"]
             num_batches += 1
             global_step += 1
+            # if v_norm_ema is None:
+            #     v_norm_ema = info["v_norm"]
+            # else:
+            #     v_norm_ema = (
+            #         v_norm_ema_decay * v_norm_ema
+            #         + (1.0 - v_norm_ema_decay) * info["v_norm"]
+            #     )
+
+            lr = scheduler.get_lr()
+            if wandb_run is not None:
+                # Log |V| every step so the trend can be visualized like toy examples.
+                wandb.log(
+                    {
+                        "train/v_norm_step": info["v_norm"],
+                        # "train/v_norm_step_ema": v_norm_ema,
+                    },
+                    step=global_step,
+                )
 
             # Logging
             if global_step % log_interval == 0:
-                lr = scheduler.get_lr()
                 print(
                     f"Epoch {epoch+1}/{config['epochs']} | "
                     f"Step {global_step} | "
                     f"Loss: {info['loss']:.4f} | "
                     f"Drift: {info['drift_norm']:.4f} | "
+                    f"|V|: {info['v_norm']:.4f} | "
                     f"Grad: {info['grad_norm']:.4f} | "
                     f"LR: {lr:.6f}"
                 )
@@ -769,12 +790,21 @@ def save_real_time_series_samples(
     num_samples: int = 80,
     num_workers: int = 0,
 ):
-    """Collect real delay-embedded samples and save them as time-series plots."""
+    """Collect randomly sampled real delay-embedded samples and plot them."""
+    n = min(num_samples, len(dataset))
+    if n <= 0:
+        raise ValueError("Dataset is empty; cannot save real samples.")
+
+    # For visualization, random sampling gives a much more representative grid
+    # than always taking the first contiguous windows.
+    indices = random.sample(range(len(dataset)), k=n)
+    sampled_dataset = torch.utils.data.Subset(dataset, indices)
+
     series = collect_real_time_series(
-        dataset,
+        sampled_dataset,
         config,
         device,
-        num_samples=min(num_samples, len(dataset)),
+        num_samples=n,
         num_workers=num_workers,
     )
     save_time_series_grid(series, save_path, ncol=8)

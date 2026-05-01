@@ -269,6 +269,7 @@ def compute_drifting_loss(
 
     total_loss = torch.tensor(0.0, device=device, requires_grad=True)
     total_drift_norm = 0.0
+    total_v_norm = 0.0
 
     # Compute loss at each scale
     for scale_idx, (feat_gen, feat_pos) in enumerate(zip(feat_gen_list, feat_pos_list)):
@@ -288,6 +289,8 @@ def compute_drifting_loss(
             v_norm = torch.sqrt(torch.mean(V_tau ** 2) + 1e-8)
             V_tau = V_tau / (v_norm + 1e-8)
             V_total = V_total + V_tau
+            total_v_norm += v_norm.item()
+
 
         # Loss: MSE(phi(x), stopgrad(phi(x) + V))
         target = (feat_gen + V_total).detach()
@@ -299,6 +302,7 @@ def compute_drifting_loss(
     info = {
         "loss": total_loss.item(),
         "drift_norm": total_drift_norm,
+        "v_norm": total_v_norm,
     }
 
     return total_loss, info
@@ -540,6 +544,8 @@ def train(
 
     start_epoch = 0
     global_step = 0
+    v_norm_ema = None
+    v_norm_ema_decay = 0.98
 
     # Training loop
     print(f"\nStarting training for {config['epochs']} epochs...")
@@ -581,15 +587,32 @@ def train(
             epoch_drift_norm += info["drift_norm"]
             num_batches += 1
             global_step += 1
+            if v_norm_ema is None:
+                v_norm_ema = info["v_norm"]
+            else:
+                v_norm_ema = (
+                    v_norm_ema_decay * v_norm_ema
+                    + (1.0 - v_norm_ema_decay) * info["v_norm"]
+                )
+
+            lr = scheduler.get_lr()
+            if wandb_run is not None:
+                wandb.log(
+                    {
+                        "train/v_norm_step": info["v_norm"],
+                        "train/v_norm_step_ema": v_norm_ema,
+                    },
+                    step=global_step,
+                )
 
             # Logging
             if global_step % log_interval == 0:
-                lr = scheduler.get_lr()
                 print(
                     f"Epoch {epoch+1}/{config['epochs']} | "
                     f"Step {global_step} | "
                     f"Loss: {info['loss']:.4f} | "
                     f"Drift: {info['drift_norm']:.4f} | "
+                    f"|V|: {info['v_norm']:.4f} | "
                     f"Grad: {info['grad_norm']:.4f} | "
                     f"LR: {lr:.6f}"
                 )
@@ -598,6 +621,7 @@ def train(
                         {
                             "train/loss": info["loss"],
                             "train/drift_norm": info["drift_norm"],
+                            "train/v_norm": info["v_norm"],
                             "train/grad_norm": info["grad_norm"],
                             "train/lr": lr,
                             "train/epoch": epoch + 1,
