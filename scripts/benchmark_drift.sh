@@ -63,8 +63,8 @@ VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts"
 # =========================
 # 训练参数
 # =========================
-BATCH_SIZE=4
-BS_POS=4
+BATCH_SIZE=512
+BS_POS=1024
 EPOCHS=200
 IMG_SIZE=16
 TS_LEN=256
