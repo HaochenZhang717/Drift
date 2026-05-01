@@ -64,7 +64,7 @@ def _resolve_ckpt_root(ckpt_root=None):
     return None
 
 
-def _resolve_ckpt_path(dataset, ckpt_root=None):
+def _resolve_ckpt_path(dataset, ckpt_root=None, ckpt_name="best.pt"):
     ckpt_root = _resolve_ckpt_root(ckpt_root)
     if ckpt_root is None:
         raise FileNotFoundError(
@@ -77,7 +77,7 @@ def _resolve_ckpt_path(dataset, ckpt_root=None):
             f"No FID-VAE checkpoint mapping is defined for dataset '{dataset}'."
         )
 
-    ckpt_path = os.path.join(ckpt_root, ckpt_dir_name, "best.pt")
+    ckpt_path = os.path.join(ckpt_root, ckpt_dir_name, ckpt_name)
     if not os.path.exists(ckpt_path):
         raise FileNotFoundError(
             f"Expected FID-VAE checkpoint at {ckpt_path} for dataset '{dataset}'."
@@ -117,11 +117,19 @@ def _load_model_state(model, ckpt_path, device):
     return model
 
 
-def VAE_FID(ori_data, generated_data, dataset, device, vae_ckpt_root=None, batch_size=128):
+def VAE_FID(
+    ori_data,
+    generated_data,
+    dataset,
+    device,
+    vae_ckpt_root=None,
+    vae_ckpt_name="best.pt",
+    batch_size=128,
+):
     real_tensor = _to_bct(ori_data)
     fake_tensor = _to_bct(generated_data)
 
-    ckpt_path = _resolve_ckpt_path(dataset, vae_ckpt_root)
+    ckpt_path = _resolve_ckpt_path(dataset, vae_ckpt_root, ckpt_name=vae_ckpt_name)
     channels, seq_len = real_tensor.shape[1], real_tensor.shape[2]
 
     model = FIDVAE(

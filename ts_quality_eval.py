@@ -144,6 +144,7 @@ def evaluate_time_series_metrics(
     num_samples: Optional[int] = None,
     base_path: Optional[str] = None,
     vae_ckpt_root: Optional[str] = None,
+    vae_ckpt_name: str = "best.pt",
     output_dir: Optional[Path] = None,
     step: Optional[int] = None,
 ) -> Dict[str, Any]:
@@ -203,7 +204,14 @@ def evaluate_time_series_metrics(
         from metrics.vae_fid import VAE_FID
 
         results["metric/vae_fid"] = float(
-            VAE_FID(real_sig, gen_sig, config["dataset"], device, vae_ckpt_root=vae_ckpt_root)
+            VAE_FID(
+                real_sig,
+                gen_sig,
+                config["dataset"],
+                device,
+                vae_ckpt_root=vae_ckpt_root,
+                vae_ckpt_name=vae_ckpt_name,
+            )
         )
 
     return results

@@ -54,6 +54,21 @@ def parse_temperatures(value: str) -> list:
     return temperatures
 
 
+def parse_eval_splits(value: str) -> list:
+    """Parse comma-separated eval split names."""
+    splits = [item.strip().lower() for item in value.split(",") if item.strip()]
+    if not splits:
+        raise argparse.ArgumentTypeError("eval_splits must contain at least one split")
+    valid = {"train", "test"}
+    invalid = [s for s in splits if s not in valid]
+    if invalid:
+        raise argparse.ArgumentTypeError(
+            f"Unsupported eval split(s): {invalid}. Valid splits: {sorted(valid)}"
+        )
+    # Keep order while removing duplicates.
+    return list(dict.fromkeys(splits))
+
+
 def build_config(args: argparse.Namespace) -> Dict[str, Any]:
     """Build the training config from parsed argparse values."""
     config_keys = [
@@ -373,9 +388,12 @@ def train(
     wandb_mode: Optional[str] = None,
     metrics_base_path: Optional[str] = None,
     vae_ckpt_root: Optional[str] = None,
+    vae_ckpt_name: str = "best.pt",
+    fid_monitor_split: str = "train",
     ts_feature_encoder_ckpt: Optional[str] = None,
     batch_size: int = 256,
     argparse_config: Optional[Dict[str, Any]] = None,
+    eval_splits: Optional[list] = None,
 ):
     """Main training function."""
     set_seed(seed)
@@ -388,6 +406,8 @@ def train(
     config["metric_iteration"] = metric_iteration
     config["ts_feature_encoder_ckpt"] = ts_feature_encoder_ckpt
     config["train_batch_size"] = batch_size
+    config["dataset"] = config["data"]
+    eval_splits = eval_splits or ["train", "test"]
     if ts_feature_encoder_ckpt is not None:
         config["use_feature_encoder"] = True
     wandb_config = dict(argparse_config) if argparse_config is not None else dict(config)
@@ -490,6 +510,7 @@ def train(
 
     start_epoch = 0
     global_step = 0
+    best_monitored_fid = float("inf")
     # v_norm_ema = None
     # v_norm_ema_decay = 0.98
 
@@ -626,10 +647,12 @@ def train(
             ):
                 try:
                     metric_results = {}
-                    for split, eval_dataset in (
-                        ("train", train_dataset),
-                        ("test", test_dataset),
-                    ):
+                    split_to_dataset = {
+                        "train": train_dataset,
+                        "test": test_dataset,
+                    }
+                    for split in eval_splits:
+                        eval_dataset = split_to_dataset[split]
                         split_output_dir = output_dir / "metric_samples" / split
                         split_results = evaluate_time_series_metrics(
                             ema.shadow,
@@ -642,6 +665,7 @@ def train(
                             num_workers=num_workers,
                             base_path=metrics_base_path,
                             vae_ckpt_root=vae_ckpt_root,
+                            vae_ckpt_name=vae_ckpt_name,
                             output_dir=split_output_dir,
                             step=global_step,
                         )
@@ -654,6 +678,32 @@ def train(
                     print(f"Metrics step {global_step} | {metric_str}")
                     if wandb_run is not None:
                         wandb.log(metric_results, step=global_step)
+
+                    monitored_fid_key = f"metric/{fid_monitor_split}/vae_fid"
+                    if monitored_fid_key in metric_results:
+                        current_fid = float(metric_results[monitored_fid_key])
+                        if current_fid < best_monitored_fid:
+                            best_monitored_fid = current_fid
+                            best_fid_ckpt_path = output_dir / "checkpoint_best_fid.pt"
+                            save_checkpoint(
+                                str(best_fid_ckpt_path),
+                                model,
+                                ema,
+                                optimizer,
+                                scheduler,
+                                epoch,
+                                global_step,
+                                config,
+                            )
+                            print(
+                                f"Saved best-FID checkpoint ({fid_monitor_split}) "
+                                f"{current_fid:.6f} -> {best_fid_ckpt_path}"
+                            )
+                            if wandb_run is not None:
+                                wandb.log(
+                                    {f"metric/{fid_monitor_split}/best_vae_fid": best_monitored_fid},
+                                    step=global_step,
+                                )
                 except Exception as exc:
                     print(f"Metric evaluation failed at step {global_step}: {exc}")
                     if wandb_run is not None:
@@ -886,6 +936,12 @@ def main():
         help="Comma-separated metrics to run: disc,pred,contextFID,vaeFID",
     )
     parser.add_argument(
+        "--eval_splits",
+        type=parse_eval_splits,
+        default=["train", "test"],
+        help="Comma-separated splits for metric evaluation (default: train,test).",
+    )
+    parser.add_argument(
         "--eval_num_samples",
         type=int,
         default=None,
@@ -938,6 +994,19 @@ def main():
         type=str,
         default=None,
         help="Checkpoint root for vaeFID",
+    )
+    parser.add_argument(
+        "--vae_ckpt_name",
+        type=str,
+        default="best.pt",
+        help="FID-VAE checkpoint filename to use for vaeFID (e.g., best.pt or last.pt).",
+    )
+    parser.add_argument(
+        "--fid_monitor_split",
+        type=str,
+        default="train",
+        choices=["train", "test"],
+        help="Split used to monitor best vaeFID and save checkpoint_best_fid.pt.",
     )
     parser.add_argument(
         "--ts_feature_encoder_ckpt",
@@ -1001,9 +1070,12 @@ def main():
         wandb_mode=args.wandb_mode,
         metrics_base_path=args.metrics_base_path,
         vae_ckpt_root=args.vae_ckpt_root,
+        vae_ckpt_name=args.vae_ckpt_name,
+        fid_monitor_split=args.fid_monitor_split,
         ts_feature_encoder_ckpt=args.ts_feature_encoder_ckpt,
         batch_size=args.batch_size,
         argparse_config=vars(args),
+        eval_splits=args.eval_splits,
     )
 
 

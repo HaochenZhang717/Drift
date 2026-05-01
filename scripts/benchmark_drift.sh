@@ -1,48 +1,48 @@
-##!/usr/bin/env bash
-##SBATCH --job-name=drift
-##SBATCH --partition=all
-##SBATCH --nodes=1
-##SBATCH --ntasks=1
-##SBATCH --cpus-per-task=8
-##SBATCH --gres=gpu:1
-##SBATCH --mem=60G
-##SBATCH --time=06:00:00
-##SBATCH --output=/playpen-shared/haochenz/logs/slurm/%x_%j.out
-##SBATCH --error=/playpen-shared/haochenz/logs/slurm/%x_%j.err
-#
-#set -euo pipefail
-#
-#ROOT_DIR="/playpen-shared/haochenz/Drift"
-#cd "$ROOT_DIR"
-#mkdir -p "$ROOT_DIR/logs/slurm"
-#
-#source ~/.zshrc >/dev/null 2>&1 || true
-#if [[ -n "${CONDA_ENV:-}" ]]; then
-#  CONDA_BIN=""
-#  if [[ -x "/playpen/haochenz/miniconda3/bin/conda" ]]; then
-#    CONDA_BIN="/playpen/haochenz/miniconda3/bin/conda"
-#  elif [[ -x "/playpen-shared/haochenz/miniconda3/bin/conda" ]]; then
-#    CONDA_BIN="/playpen-shared/haochenz/miniconda3/bin/conda"
-#  elif [[ -x "$HOME/miniconda3/bin/conda" ]]; then
-#    CONDA_BIN="$HOME/miniconda3/bin/conda"
-#  elif [[ -x "$HOME/anaconda3/bin/conda" ]]; then
-#    CONDA_BIN="$HOME/anaconda3/bin/conda"
-#  else
-#    echo "Could not find a usable conda binary." >&2
-#    exit 1
-#  fi
-#  eval "$("$CONDA_BIN" shell.bash hook)"
-#  conda activate "$CONDA_ENV"
-#fi
-#
-#export TORCH_DISTRIBUTED_DEBUG=DETAIL
-#export NCCL_DEBUG=INFO
+#!/usr/bin/env bash
+#SBATCH --job-name=drift
+#SBATCH --partition=all
+#SBATCH --nodes=1
+#SBATCH --ntasks=1
+#SBATCH --cpus-per-task=8
+#SBATCH --gres=gpu:1
+#SBATCH --mem=60G
+#SBATCH --time=1-00:00:00
+#SBATCH --output=/playpen-shared/haochenz/logs/slurm/%x_%j.out
+#SBATCH --error=/playpen-shared/haochenz/logs/slurm/%x_%j.err
+
+set -euo pipefail
+
+ROOT_DIR="/playpen-shared/haochenz/Drift"
+cd "$ROOT_DIR"
+mkdir -p "$ROOT_DIR/logs/slurm"
+
+source ~/.zshrc >/dev/null 2>&1 || true
+if [[ -n "${CONDA_ENV:-}" ]]; then
+  CONDA_BIN=""
+  if [[ -x "/playpen/haochenz/miniconda3/bin/conda" ]]; then
+    CONDA_BIN="/playpen/haochenz/miniconda3/bin/conda"
+  elif [[ -x "/playpen-shared/haochenz/miniconda3/bin/conda" ]]; then
+    CONDA_BIN="/playpen-shared/haochenz/miniconda3/bin/conda"
+  elif [[ -x "$HOME/miniconda3/bin/conda" ]]; then
+    CONDA_BIN="$HOME/miniconda3/bin/conda"
+  elif [[ -x "$HOME/anaconda3/bin/conda" ]]; then
+    CONDA_BIN="$HOME/anaconda3/bin/conda"
+  else
+    echo "Could not find a usable conda binary." >&2
+    exit 1
+  fi
+  eval "$("$CONDA_BIN" shell.bash hook)"
+  conda activate "$CONDA_ENV"
+fi
+
+export TORCH_DISTRIBUTED_DEBUG=DETAIL
+export NCCL_DEBUG=INFO
 
 # =========================
 # 基本设置
 # =========================
-DATASETS_DIR=/Users/zhc/Documents/PhD/projects/ImagenFew/data
-#DATASETS_DIR="/playpen-shared/haochenz/ImagenFew/data"
+#DATASETS_DIR=/Users/zhc/Documents/PhD/projects/ImagenFew/data
+DATASETS_DIR="/playpen-shared/haochenz/ImagenFew/data"
 
 
 #REL_PATH=${REL_PATH:-TSF/ETT-small/ETTm1.csv}
@@ -57,11 +57,12 @@ DATASET_NAME=${DATASET_NAME:-custom}
 IN_CHANNEL=${IN_CHANNEL-6}
 
 
-PROJECT_ROOT="/Users/zhc/Documents/PhD/projects/drifting-model"
-#PROJECT_ROOT="/playpen-shared/haochenz/Drift"
+#PROJECT_ROOT="/Users/zhc/Documents/PhD/projects/drifting-model"
+PROJECT_ROOT="/playpen-shared/haochenz/Drift"
 
 OUTPUT_DIR="${PROJECT_ROOT}/outputs/benchmark/${DATA_BACKEND}"
 VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts"
+VAE_CKPT_NAME=${VAE_CKPT_NAME:-last.pt}
 
 
 # =========================
@@ -69,7 +70,7 @@ VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts"
 # =========================
 BATCH_SIZE=512
 BS_POS=1024
-EPOCHS=200
+EPOCHS=1000
 IMG_SIZE=16
 TS_LEN=256
 
@@ -82,6 +83,7 @@ python benchmarking_drift.py \
     --num_workers 16 \
     --batch_size "${BATCH_SIZE}" \
     --epochs "${EPOCHS}" \
+    --eval_splits train \
     \
     --model DriftDiT-Tiny \
     --img_size ${IMG_SIZE} \
@@ -116,6 +118,7 @@ python benchmarking_drift.py \
     --eval_step_interval 500 \
     \
     --vae_ckpt_root "${VAE_ROOT}" \
+    --vae_ckpt_name "${VAE_CKPT_NAME}" \
     \
     --wandb \
     --wandb_project BenchmarkingDrift \
