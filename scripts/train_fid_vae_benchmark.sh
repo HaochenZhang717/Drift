@@ -5,7 +5,7 @@ python train_fid_vae_benchmark.py \
   --rel_path "TSF/ETT-small/ETTm1.csv" \
   --ts_seq_len 256 \
   --batch_size 128 \
-  --epochs 200 \
+  --epochs 100 \
   --save_dir ./fid_vae_ckpts/benchmark
 
 
@@ -16,7 +16,7 @@ python train_fid_vae_benchmark.py \
   --rel_path "TSF/ETT-small/ETTm2.csv" \
   --ts_seq_len 256 \
   --batch_size 128 \
-  --epochs 200 \
+  --epochs 100 \
   --save_dir ./fid_vae_ckpts/benchmark
 
 
@@ -27,7 +27,7 @@ python train_fid_vae_benchmark.py \
   --rel_path "TSF/ETT-small/ETTh2.csv" \
   --ts_seq_len 256 \
   --batch_size 128 \
-  --epochs 200 \
+  --epochs 100 \
   --save_dir ./fid_vae_ckpts/benchmark
 
 python train_fid_vae_benchmark.py \
@@ -37,7 +37,7 @@ python train_fid_vae_benchmark.py \
   --rel_path "TSF/weather/weather.csv" \
   --ts_seq_len 256 \
   --batch_size 128 \
-  --epochs 200 \
+  --epochs 100 \
   --save_dir ./fid_vae_ckpts/benchmark
 
 python train_fid_vae_benchmark.py \
@@ -47,5 +47,5 @@ python train_fid_vae_benchmark.py \
   --rel_path "TSG/AirQuality/AirQualityUCI.csv" \
   --ts_seq_len 256 \
   --batch_size 128 \
-  --epochs 200 \
+  --epochs 100 \
   --save_dir ./fid_vae_ckpts/benchmark
