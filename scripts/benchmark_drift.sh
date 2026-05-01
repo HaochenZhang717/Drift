@@ -43,10 +43,16 @@ export NCCL_DEBUG=INFO
 # =========================
 #DATASETS_DIR=/Users/zhc/Documents/PhD/projects/ImagenFew/data
 DATASETS_DIR="/playpen-shared/haochenz/ImagenFew/data"
-REL_PATH=TSF/ETT-small/ETTm1.csv
-DATA_BACKEND=ETTm1
-DATASET_NAME=ETTm1
-IN_CHANNEL=7
+
+#REL_PATH=TSF/ETT-small/ETTm1.csv
+#DATA_BACKEND=ETTm1
+#DATASET_NAME=ETTm1
+#IN_CHANNEL=7
+
+REL_PATH=${REL_PATH:-TSF/ETT-small/ETTm1.csv}
+DATA_BACKEND=${DATA_BACKEND:-ETTm1}
+DATASET_NAME=${DATASET_NAME:-ETTm1}
+IN_CHANNEL=${IN_CHANNEL-7}
 
 #PROJECT_ROOT="/Users/zhc/Documents/PhD/projects/drifting-model"
 PROJECT_ROOT="/playpen-shared/haochenz/Drift"
