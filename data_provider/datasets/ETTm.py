@@ -14,7 +14,7 @@ def ETTm(**config):
         features=config.get('features', 'M'),
         target='OT',
         # timeenc= 0 if config['embed'] != 'timeF' else 1,
-        timeenc= 0,
+        timeenc= 1,
         freq='h'
     )
 

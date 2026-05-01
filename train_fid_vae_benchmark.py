@@ -86,6 +86,8 @@ def _make_dataset_config(args, flag):
         "data": args.data,
         "datasets_dir": args.datasets_dir,
         "rel_path": args.rel_path,
+        # Some dataset backends (e.g., Mujoco) expect `path` instead of `rel_path`.
+        "path": args.rel_path,
         "seq_len": args.ts_seq_len,
         "flag": flag,
     }
@@ -164,6 +166,7 @@ def train(args):
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
 
     sample = train_dataset[0][0]
+    print(f"data shape: {sample.shape}")
     c, t = sample.shape
 
     model = FIDVAE(
@@ -178,7 +181,7 @@ def train(args):
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.001)
 
-    save_dir = os.path.join(args.save_dir, args.data)
+    save_dir = os.path.join(args.save_dir, args.dataset_name)
     os.makedirs(save_dir, exist_ok=True)
     np.savez(
         os.path.join(save_dir, "dataset_metadata.npz"),

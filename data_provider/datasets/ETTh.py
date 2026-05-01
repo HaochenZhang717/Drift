@@ -9,10 +9,11 @@ def ETTh(**config):
         root_path=config['datasets_dir'],
         data_path=config['rel_path'],
         flag=config['flag'],
-        size=[config['seq_len'], config['label_len'], config['pred_len']],
-        features=config['features'],
+        size=[config['seq_len'], config.get('label_len', 7), config.get('pred_len', 0)],
+        features=config.get('features', 'M'),
         target='OT',
-        timeenc= 0 if config['embed'] != 'timeF' else 1,
+        # timeenc= 0 if config['embed'] != 'timeF' else 1,
+        timeenc= 1,
         freq='h'
     )
 

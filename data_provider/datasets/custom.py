@@ -5,6 +5,30 @@ from sklearn.preprocessing import StandardScaler
 from utils.timefeatures import time_features
 
 def Custom(**config):
+
+    if "weather" in config['rel_path']:
+        return Dataset_Custom(
+            root_path=config['datasets_dir'],
+            data_path=config['rel_path'],
+            flag=config['flag'],
+            size=[config['seq_len'], 21, 0],
+            features='M',
+            target='OT',
+            timeenc=1,
+            freq='h'
+        )
+    elif 'national_illness' in config['rel_path']:
+        return Dataset_Custom(
+            root_path=config['datasets_dir'],
+            data_path=config['rel_path'],
+            flag=config['flag'],
+            size=[config['seq_len'], 7, 0],
+            features='M',
+            target='OT',
+            timeenc=1,
+            freq='h'
+        )
+
     return Dataset_Custom(
         root_path=config['datasets_dir'],
         data_path=config['rel_path'],
