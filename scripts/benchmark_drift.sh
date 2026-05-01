@@ -57,13 +57,6 @@ DATASET_NAME=${DATASET_NAME:-custom}
 IN_CHANNEL=${IN_CHANNEL-6}
 
 
-#PROJECT_ROOT="/Users/zhc/Documents/PhD/projects/drifting-model"
-PROJECT_ROOT="/playpen-shared/haochenz/Drift"
-
-OUTPUT_DIR="${PROJECT_ROOT}/outputs/benchmark/${DATA_BACKEND}"
-VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts"
-VAE_CKPT_NAME=${VAE_CKPT_NAME:-last.pt}
-
 
 # =========================
 # 训练参数
@@ -73,6 +66,16 @@ BS_POS=1024
 EPOCHS=1000
 IMG_SIZE=16
 TS_LEN=256
+
+
+#PROJECT_ROOT="/Users/zhc/Documents/PhD/projects/drifting-model"
+PROJECT_ROOT="/playpen-shared/haochenz/Drift"
+
+OUTPUT_DIR="${PROJECT_ROOT}/outputs/benchmark${TS_LEN}/${DATA_BACKEND}"
+VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts"
+VAE_CKPT_NAME=${VAE_CKPT_NAME:-last.pt}
+
+
 
 # =========================
 # 运行
@@ -122,4 +125,4 @@ python benchmarking_drift.py \
     \
     --wandb \
     --wandb_project BenchmarkingDrift \
-    --wandb_run_name ${DATASET_NAME}
+    --wandb_run_name "${DATASET_NAME}_${TS_LEN}"

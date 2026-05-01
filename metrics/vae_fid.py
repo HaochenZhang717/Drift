@@ -71,18 +71,27 @@ def _resolve_ckpt_path(dataset, ckpt_root=None, ckpt_name="best.pt"):
             "Could not find fid_vae_ckpts root. Set FID_VAE_CKPT_ROOT or pass vae_ckpt_root explicitly."
         )
 
-    ckpt_dir_name = _DATASET_TO_CKPT_DIR.get(dataset)
-    if ckpt_dir_name is None:
-        raise FileNotFoundError(
-            f"No FID-VAE checkpoint mapping is defined for dataset '{dataset}'."
-        )
+    # 1) Prefer direct folder naming: <ckpt_root>/<dataset>/<ckpt_name>
+    direct_path = os.path.join(ckpt_root, dataset, ckpt_name)
+    if os.path.exists(direct_path):
+        return direct_path
 
-    ckpt_path = os.path.join(ckpt_root, ckpt_dir_name, ckpt_name)
-    if not os.path.exists(ckpt_path):
-        raise FileNotFoundError(
-            f"Expected FID-VAE checkpoint at {ckpt_path} for dataset '{dataset}'."
+    # 2) Backward-compatible mapped folder naming
+    ckpt_dir_name = _DATASET_TO_CKPT_DIR.get(dataset)
+    if ckpt_dir_name is not None:
+        mapped_path = os.path.join(ckpt_root, ckpt_dir_name, ckpt_name)
+        if os.path.exists(mapped_path):
+            return mapped_path
+
+    raise FileNotFoundError(
+        f"Could not find FID-VAE checkpoint for dataset '{dataset}'. "
+        f"Tried: {direct_path}"
+        + (
+            f", {os.path.join(ckpt_root, ckpt_dir_name, ckpt_name)}"
+            if ckpt_dir_name is not None
+            else ""
         )
-    return ckpt_path
+    )
 
 
 def _to_bct(data):
