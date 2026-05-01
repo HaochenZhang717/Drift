@@ -41,7 +41,8 @@ export NCCL_DEBUG=INFO
 # =========================
 # 基本设置
 # =========================
-DATASETS_DIR=/Users/zhc/Documents/PhD/projects/ImagenFew/data
+#DATASETS_DIR=/Users/zhc/Documents/PhD/projects/ImagenFew/data
+DATASETS_DIR="/playpen-shared/haochenz/ImagenFew/data"
 REL_PATH=TSF/ETT-small/ETTm1.csv
 DATA_BACKEND=ETTm1
 DATASET_NAME=ETTm1
