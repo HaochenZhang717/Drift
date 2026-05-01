@@ -199,6 +199,7 @@ def compute_drifting_loss(
 
     total_loss = torch.tensor(0.0, device=device, requires_grad=True)
     total_drift_norm = 0.0
+    total_v_norm = 0.0
 
     # Compute loss at each scale
     for scale_idx, (feat_gen, feat_pos) in enumerate(zip(feat_gen_list, feat_pos_list)):
@@ -218,6 +219,7 @@ def compute_drifting_loss(
             v_norm = torch.sqrt(torch.mean(V_tau ** 2) + 1e-8)
             V_tau = V_tau / (v_norm + 1e-8)
             V_total = V_total + V_tau
+            total_v_norm += v_norm.item()
 
         # Loss: MSE(phi(x), stopgrad(phi(x) + V))
         target = (feat_gen + V_total).detach()
@@ -229,6 +231,7 @@ def compute_drifting_loss(
     info = {
         "loss": total_loss.item(),
         "drift_norm": total_drift_norm,
+        "v_norm": total_v_norm,
     }
 
     return total_loss, info
