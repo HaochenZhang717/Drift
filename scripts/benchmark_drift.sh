@@ -72,7 +72,7 @@ TS_LEN=256
 PROJECT_ROOT="/playpen-shared/haochenz/Drift"
 
 OUTPUT_DIR="${PROJECT_ROOT}/outputs/benchmark${TS_LEN}/${DATA_BACKEND}"
-VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts"
+VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts/benchmark_${TS_LEN}"
 VAE_CKPT_NAME=${VAE_CKPT_NAME:-last.pt}
 
 
