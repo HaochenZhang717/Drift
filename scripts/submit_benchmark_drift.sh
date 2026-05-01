@@ -3,4 +3,4 @@ REL_PATH=TSF/ETT-small/ETTh1.csv \
 DATA_BACKEND=ETTh1 \
 DATASET_NAME=ETTh1 \
 IN_CHANNEL=7 \
-bash run.sh
+bash scripts/benchmark_drift.sh
