@@ -6,7 +6,7 @@
 #bash scripts/benchmark_drift.sh
 
 
-CUDA_ENV=vlm \
+CONDA_ENV=vlm \
 REL_PATH=TSF/ETT-small/ETTm1.csv \
 DATA_BACKEND=ETTm1 \
 DATASET_NAME=ETTm1 \
