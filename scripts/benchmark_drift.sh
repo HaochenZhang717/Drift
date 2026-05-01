@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="${SLURM_SUBMIT_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
+ROOT_DIR="/playpen-shared/haochenz/Drift"
 cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/logs/slurm"
 
