@@ -10,18 +10,19 @@ from typing import Dict, Any, Optional
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
-import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
-
-
+from data_provider.data_provider import get_train, get_test
 from img_transformations import DelayEmbedder
-from utils.utils_dataset import get_dataset
+
+
 
 from models.unconditional_model import DriftDiT_Tiny, DriftDiT_Small, DriftDiT_models
-
+from drifting import (
+    compute_V,
+)
 from feature_extractors.ts2vec.models.encoder import TSEncoder
 from utils.utils_drift import (
     EMA,
@@ -33,7 +34,9 @@ from utils.utils_drift import (
     set_seed,
 )
 from ts_quality_eval import (
+    collect_real_time_series,
     delay_images_to_series,
+    evaluate_time_series_metrics,
     parse_metric_names,
 )
 
@@ -41,276 +44,6 @@ try:
     import wandb
 except ImportError:
     wandb = None
-
-def debug_drift_visualization(
-    x,
-    y_pos,
-    dist_pos,
-    temperature,
-    step=0,
-    save_dir="debug_drift",
-    num_points=3,
-    topk=5,
-):
-    """
-    Drift debug visualization (correct weighted version)
-
-    包含：
-    1. time-series local neighborhood（weighted mean）
-    2. PCA feature space visualization（weighted center + drift）
-    3. kernel weight distribution
-    4. distance distribution
-    """
-
-    import os
-    import numpy as np
-    import matplotlib.pyplot as plt
-    from sklearn.decomposition import PCA
-    import torch
-
-    os.makedirs(save_dir, exist_ok=True)
-
-    x_np = x.detach().cpu().numpy()
-    y_np = y_pos.detach().cpu().numpy()
-    dist_np = dist_pos.detach().cpu().numpy()
-
-    # ===== kernel weights =====
-    weights = torch.softmax(-dist_pos / temperature, dim=1)
-    weights_np = weights.detach().cpu().numpy()
-
-    N = x_np.shape[0]
-    idxs = np.random.choice(N, min(num_points, N), replace=False)
-
-    # ===== PCA =====
-    all_points = np.concatenate([x_np, y_np], axis=0)
-    pca = PCA(n_components=2)
-    proj = pca.fit_transform(all_points)
-
-    x_proj = proj[:len(x_np)]
-    y_proj = proj[len(x_np):]
-
-    for i, idx in enumerate(idxs):
-
-        dists = dist_np[idx]
-        w = weights_np[idx]
-
-        nearest_idx = np.argsort(dists)[:topk]
-
-        # =========================================================
-        # 🔴 正确的 weighted mean（top-k）
-        # =========================================================
-        w_topk = w[nearest_idx]
-        w_topk = w_topk / (w_topk.sum() + 1e-8)
-
-        weighted_mean = (w_topk[:, None] * y_np[nearest_idx]).sum(axis=0)
-
-        # =========================================================
-        # 1️⃣ TIME SERIES VIEW
-        # =========================================================
-        plt.figure(figsize=(6, 3))
-
-        # 背景（所有 y_pos）
-        for j in range(len(y_np)):
-            plt.plot(y_np[j], color="gray", alpha=0.02)
-
-        # top-k neighbors
-        for rank, ni in enumerate(nearest_idx):
-            alpha = 0.3 + 0.7 * (1 - rank / topk)
-            lw = 1.5 if rank == 0 else 1.0
-
-            plt.plot(
-                y_np[ni],
-                linestyle="--",
-                alpha=alpha,
-                linewidth=lw,
-                color="tab:orange",
-            )
-
-        # 🔴 weighted mean（关键！）
-        plt.plot(
-            weighted_mean,
-            color="red",
-            linewidth=2.5,
-            label="weighted mean",
-        )
-
-        # 🔵 x
-        plt.plot(
-            x_np[idx],
-            color="blue",
-            linewidth=2.5,
-            label="x",
-        )
-
-        plt.title(f"TS neighborhood (sample {idx})")
-        plt.xticks([])
-        plt.yticks([])
-        plt.tight_layout()
-        plt.savefig(f"{save_dir}/step{step}_sample{i}_ts.png", dpi=150)
-        plt.close()
-
-        # =========================================================
-        # 2️⃣ PCA FEATURE SPACE
-        # =========================================================
-        plt.figure(figsize=(4, 4))
-
-        # 全局 y_pos
-        plt.scatter(y_proj[:, 0], y_proj[:, 1], alpha=0.05)
-
-        # x
-        plt.scatter(
-            x_proj[idx, 0],
-            x_proj[idx, 1],
-            color="red",
-            s=60,
-            label="x",
-        )
-
-        # nearest neighbors
-        plt.scatter(
-            y_proj[nearest_idx, 0],
-            y_proj[nearest_idx, 1],
-            color="orange",
-            s=40,
-            label="nearest",
-        )
-
-        # 🔴 weighted mean（feature space）
-        weighted_feat = (w_topk[:, None] * y_proj[nearest_idx]).sum(axis=0)
-
-        plt.scatter(
-            weighted_feat[0],
-            weighted_feat[1],
-            color="green",
-            s=80,
-            label="weighted mean",
-        )
-
-        # 🟢 drift direction（关键 insight）
-        dx = weighted_feat[0] - x_proj[idx, 0]
-        dy = weighted_feat[1] - x_proj[idx, 1]
-
-        plt.arrow(
-            x_proj[idx, 0],
-            x_proj[idx, 1],
-            dx,
-            dy,
-            color="green",
-            head_width=0.05,
-            length_includes_head=True,
-        )
-
-        plt.title("PCA feature space")
-        plt.legend(fontsize=6)
-        plt.tight_layout()
-        plt.savefig(f"{save_dir}/step{step}_sample{i}_pca.png", dpi=150)
-        plt.close()
-
-        # =========================================================
-        # 3️⃣ WEIGHT DISTRIBUTION
-        # =========================================================
-        plt.figure(figsize=(4, 2))
-
-        sorted_w = np.sort(w)[::-1]
-
-        plt.plot(sorted_w[:50])
-        plt.title("kernel weight (top-50)")
-        plt.xlabel("rank")
-        plt.ylabel("weight")
-
-        plt.tight_layout()
-        plt.savefig(f"{save_dir}/step{step}_sample{i}_weights.png", dpi=150)
-        plt.close()
-
-        # =========================================================
-        # 4️⃣ DISTANCE DISTRIBUTION
-        # =========================================================
-        plt.figure(figsize=(4, 2))
-
-        plt.hist(dists, bins=30, alpha=0.7)
-        plt.axvline(dists[nearest_idx[0]], color='r', linestyle='--')
-
-        plt.title("distance distribution")
-        plt.tight_layout()
-        plt.savefig(f"{save_dir}/step{step}_sample{i}_dist.png", dpi=150)
-        plt.close()
-
-def compute_V(
-    x: torch.Tensor,
-    y_pos: torch.Tensor,
-    y_neg: torch.Tensor,
-    temperature: float,
-    mask_self: bool = True,
-) -> torch.Tensor:
-    """
-    Compute the drifting field V (Algorithm 2 from paper, Page 12).
-
-    This is the EXACT implementation from the paper's pseudocode.
-
-    Args:
-        x: Generated samples in feature space, shape (N, D)
-        y_pos: Positive (real data) samples, shape (N_pos, D)
-        y_neg: Negative (generated) samples, shape (N_neg, D)
-        temperature: Temperature for softmax (smaller = sharper)
-        mask_self: Whether to mask self-distances (when y_neg == x)
-
-    Returns:
-        V: Drifting field, shape (N, D)
-    """
-    N = x.shape[0]
-    N_pos = y_pos.shape[0]
-    N_neg = y_neg.shape[0]
-    device = x.device
-
-    # 1. Compute pairwise L2 distances
-    dist_pos = torch.cdist(x, y_pos, p=2)  # (N, N_pos)
-    dist_neg = torch.cdist(x, y_neg, p=2)  # (N, N_neg)
-    # breakpoint()
-
-
-    debug_drift_visualization(
-        x,
-        y_pos,
-        dist_pos,
-        temperature=temperature,
-        step=0,  # 可以换 global_step
-    )
-
-    raise ValueError("finish")
-    # 2. Mask self-distances (when y_neg contains x)
-    if mask_self and N == N_neg:
-        mask = torch.eye(N, device=device) * 1e6
-        dist_neg = dist_neg + mask
-
-    # 3. Compute logits
-    logit_pos = -dist_pos / temperature  # (N, N_pos)
-    logit_neg = -dist_neg / temperature  # (N, N_neg)
-
-    # 4. Concat for normalization
-    logit = torch.cat([logit_pos, logit_neg], dim=1)  # (N, N_pos + N_neg)
-
-    # 5. Normalize along BOTH dimensions (key insight from paper)
-    A_row = torch.softmax(logit, dim=1)   # softmax over y (columns)
-    A_col = torch.softmax(logit, dim=0)   # softmax over x (rows)
-    A = torch.sqrt(A_row * A_col)         # geometric mean
-
-    # 6. Split back to pos and neg
-    A_pos = A[:, :N_pos]  # (N, N_pos)
-    A_neg = A[:, N_pos:]  # (N, N_neg)
-
-    # 7. Compute weights (cross-weighting from paper)
-    W_pos = A_pos * A_neg.sum(dim=1, keepdim=True)  # (N, N_pos)
-    W_neg = A_neg * A_pos.sum(dim=1, keepdim=True)  # (N, N_neg)
-
-    # 8. Compute drift
-    drift_pos = torch.mm(W_pos, y_pos)  # (N, D)
-    drift_neg = torch.mm(W_neg, y_neg)  # (N, D)
-
-    V = drift_pos - drift_neg
-
-    return V
-
-
 
 def parse_temperatures(value: str) -> list:
     """Parse a comma-separated temperature list."""
@@ -320,43 +53,8 @@ def parse_temperatures(value: str) -> list:
     return temperatures
 
 
-def parse_modalities(value: str) -> list[str]:
-    """Parse comma-separated AI-READI modalities."""
-    modalities = [item.strip() for item in value.split(",") if item.strip()]
-    if not modalities:
-        raise argparse.ArgumentTypeError("modalities must contain at least one value")
-    return modalities
-
-
-def delay_embedding_num_cols(seq_len: int, delay: int, embedding: int) -> int:
-    """Return the delay-image column count for the configured time-series length."""
-    col = 0
-    while (col * delay + embedding) <= seq_len:
-        col += 1
-    if (
-        col < embedding
-        and col * delay != seq_len
-        and col * delay + embedding > seq_len
-    ):
-        col += 1
-    return max(1, col)
-
-
 def build_config(args: argparse.Namespace) -> Dict[str, Any]:
     """Build the training config from parsed argparse values."""
-    num_delay_cols = delay_embedding_num_cols(
-        args.ts_seq_len,
-        args.ts_delay,
-        args.ts_embedding,
-    )
-    if num_delay_cols > args.ts_embedding:
-        raise ValueError(
-            "Delay embedding configuration does not fit in a square image: "
-            f"ts_seq_len={args.ts_seq_len}, ts_delay={args.ts_delay}, "
-            f"ts_embedding={args.ts_embedding} requires {num_delay_cols} columns. "
-            "Increase --ts_embedding/--img_size or increase --ts_delay."
-        )
-
     config_keys = [
         "model",
         "img_size",
@@ -377,29 +75,16 @@ def build_config(args: argparse.Namespace) -> Dict[str, Any]:
         "ts_delay",
         "ts_embedding",
         "ts_stride",
-        "window_mode",
-        "daily_min_events",
-        "modalities",
-        "anchor_modality",
-        "target_modality",
-        "max_anchor_gap_minutes",
-        "max_window_span_hours",
-        "anchor_sampling_minutes",
-        "anchor_sampling_tolerance_seconds",
-        "clinical_root",
-        "participants_tsv_path",
-        "include_clinical_static",
-        "include_participant_metadata",
-        "include_study_group",
-        "include_clinical_site",
+
+        "dataset_name",
+        "data",
+        "datasets_dir",
+        "rel_path",
     ]
+
+
+
     config = {key: getattr(args, key) for key in config_keys}
-    config["dataset"] = "aireadi_imputation"
-    config["max_events_per_modality"] = {"glucose": args.ts_seq_len}
-    min_glucose_events = args.daily_min_events or args.ts_seq_len
-    config["min_events_per_modality"] = {"glucose": min_glucose_events}
-    if args.window_mode == "daily" and config["max_window_span_hours"] is not None:
-        config["max_window_span_hours"] = max(float(config["max_window_span_hours"]), 24.0)
     return config
 
 
@@ -450,27 +135,6 @@ def load_ts_feature_encoder_from_ckpt(
     return encoder
 
 
-def make_delay_embedder(config: dict, device: torch.device) -> DelayEmbedder:
-    return DelayEmbedder(
-        device=device,
-        seq_len=config["ts_seq_len"],
-        delay=config["ts_delay"],
-        embedding=config["ts_embedding"],
-    )
-
-
-def target_series_to_images(
-    series: torch.Tensor,
-    config: dict,
-    device: torch.device,
-) -> torch.Tensor:
-    """Convert AI-READI glucose target sequences to delay images."""
-    if series.ndim == 2:
-        series = series.unsqueeze(-1)
-    embedder = make_delay_embedder(config, device)
-    return embedder.ts_to_img(series.to(device))
-
-
 def compute_drifting_loss(
     x_gen: torch.Tensor,
     x_pos: torch.Tensor,
@@ -506,7 +170,7 @@ def compute_drifting_loss(
 
     rep_gen = delay_images_to_series(x_gen, ts_loss_config, device)
     rep_pos = delay_images_to_series(x_pos, ts_loss_config, device)
-
+    breakpoint()
     if feature_encoder is None:
         feat_gen_list = [rep_gen.flatten(start_dim=1)]
         feat_pos_list = [rep_pos.flatten(start_dim=1)]
@@ -572,6 +236,7 @@ def compute_drifting_loss(
 
 def train_step(
     model: nn.Module,
+    optimizer: torch.optim.Optimizer,
     queue: SampleQueue,
     config: dict,
     device: torch.device,
@@ -606,7 +271,7 @@ def train_step(
         config["img_size"],
         device=device,
     )
-
+    breakpoint()
     # Generate samples
     x_gen = model(noise)
 
@@ -622,41 +287,70 @@ def train_step(
         ts_loss_config=ts_loss_config,
     )
 
+    # Backward pass
+    optimizer.zero_grad()
+    loss.backward()
+
+    # Gradient clipping
+    grad_norm = torch.nn.utils.clip_grad_norm_(
+        model.parameters(), config["grad_clip"]
+    )
+    info["grad_norm"] = grad_norm.item()
+
+    # Optimizer step
+    optimizer.step()
+
     return info
 
 
 def fill_queue(
     queue: SampleQueue,
     dataloader: DataLoader,
-    config: dict,
     device: torch.device,
     min_samples: int = 64,
 ):
-    """Fill the sample queue with real AI-READI glucose delay images."""
+    """Fill the sample queue with real data."""
     for batch in dataloader:
-        x = batch_to_images(batch, config, device)
-        queue.add(x.cpu())
+        if isinstance(batch, (list, tuple)):
+            x = batch[0]
+        else:
+            x = batch
+
+        queue.add(x)
 
         if queue.is_ready(min_samples):
             break
 
 
-def batch_to_images(
-    batch: dict,
-    config: dict,
-    device: torch.device,
-) -> torch.Tensor:
-    """Convert a DataLoader batch from AIREADI daily dataset to delay images."""
-    if isinstance(batch, (list, tuple)):
-        x = batch[0]
-        if x.ndim == 4:
-            return x.to(device)
-        return target_series_to_images(x, config, device)
-    if torch.is_tensor(batch):
-        if batch.ndim == 4:
-            return batch.to(device)
-        return target_series_to_images(batch, config, device)
-    return target_series_to_images(batch["target"], config, device)
+class DelayEmbeddingImageDataset(Dataset):
+    """Wrap a time-series dataset and emit delay-embedding images (C, H, W)."""
+
+    def __init__(self, base_dataset: Dataset, config: Dict[str, Any]):
+        self.base_dataset = base_dataset
+        self.embedder = DelayEmbedder(
+            device=torch.device("cpu"),
+            seq_len=config["ts_seq_len"],
+            delay=config["ts_delay"],
+            embedding=config["ts_embedding"],
+        )
+
+    def __len__(self) -> int:
+        return len(self.base_dataset)
+
+    def __getitem__(self, idx: int) -> torch.Tensor:
+        sample = self.base_dataset[idx]
+        if isinstance(sample, (list, tuple)):
+            sample = sample[0]
+        if not torch.is_tensor(sample):
+            sample = torch.as_tensor(sample, dtype=torch.float32)
+        sample = sample.to(torch.float32)
+        if sample.ndim == 1:
+            sample = sample.unsqueeze(-1)
+        if sample.ndim != 2:
+            raise ValueError(f"Expected time-series sample shape (T, C), got {tuple(sample.shape)}")
+
+        img = self.embedder.ts_to_img(sample.unsqueeze(0), pad=True)
+        return img.squeeze(0)
 
 
 def prefix_metric_results(results: Dict[str, Any], split: str) -> Dict[str, Any]:
@@ -670,7 +364,6 @@ def prefix_metric_results(results: Dict[str, Any], split: str) -> Dict[str, Any]
 def train(
     config: Dict[str, Any],
     output_dir: str = "./outputs",
-    data_root: str = "./data",
     seed: int = 42,
     num_workers: int = 1,
     log_interval: int = 1,
@@ -694,7 +387,6 @@ def train(
     """Main training function."""
     set_seed(seed)
 
-    dataset = "aireadi_glucose_unconditional"
     metric_names = parse_metric_names(eval_metrics)
     metric_iteration = max(1, metric_iteration)
     config["eval_metrics"] = metric_names
@@ -713,17 +405,43 @@ def train(
     print(f"Using device: {device}")
 
     # Create output directory
-    output_dir = Path(output_dir) / dataset
+    output_dir = Path(output_dir) / config["dataset_name"]
     output_dir.mkdir(parents=True, exist_ok=True)
 
     wandb_run = None
+    if wandb_enabled:
+        if wandb is None:
+            print("wandb is not installed; continuing without wandb logging.")
+        else:
+            wandb_run = wandb.init(
+                project=wandb_project,
+                entity=wandb_entity,
+                name=wandb_run_name,
+                mode=wandb_mode,
+                config=wandb_config,
+                dir=str(output_dir),
+            )
 
-    train_dataset, test_dataset = get_dataset(
-        "aireadi_imputation",
-        config=config,
-        root=data_root,
-        seed=seed,
-    )
+    dataset_config = {
+        "name": config["dataset_name"],
+        "data": config["data"],  # 对应 data_dict 的 key
+        "datasets_dir": config["datasets_dir"],
+        "rel_path": config["rel_path"],
+        "seq_len": config["ts_seq_len"],  # get_train 会写入，但底层 verbal_ts 实际不使用这个字段
+        "flag": "train",  # get_train/get_test 会覆盖这个
+    }
+
+    train_dataset = get_train(dataset_config.copy())  # torch.utils.data.Dataset
+    test_dataset = get_test(dataset_config.copy())
+    train_dataset = DelayEmbeddingImageDataset(train_dataset, config)
+    test_dataset = DelayEmbeddingImageDataset(test_dataset, config)
+    # Load dataset
+    # train_dataset, test_dataset = get_dataset(
+    #     dataset,
+    #     config=config,
+    #     root=data_root,
+    #     seed=seed,
+    # )
     print(f"Dataset sizes | train: {len(train_dataset)} | test: {len(test_dataset)}")
     train_loader = DataLoader(
         train_dataset,
@@ -742,11 +460,24 @@ def train(
     ).to(device)
 
     print(f"Model: {config['model']}, Parameters: {count_parameters(model):,}")
-    ckpt = torch.load(
-        "outputs/glucose_uncond_daily/aireadi_glucose_unconditional/checkpoint_final.pt",
-        map_location="cpu"
+
+    # Create EMA
+    ema = EMA(model, decay=config["ema_decay"])
+
+    # Create optimizer
+    optimizer = torch.optim.AdamW(
+        model.parameters(),
+        lr=config["lr"],
+        weight_decay=config["weight_decay"],
     )
-    model.load_state_dict(ckpt['ema'])
+
+    # Create scheduler
+    scheduler = WarmupLRScheduler(
+        optimizer,
+        warmup_steps=config["warmup_steps"],
+        base_lr=config["lr"],
+    )
+
     # Create sample queue
     queue = SampleQueue(
         queue_size=config["queue_size"],
@@ -771,11 +502,18 @@ def train(
     print(f"\nStarting training for {config['epochs']} epochs...")
     for epoch in range(start_epoch, config["epochs"]):
         epoch_start = time.time()
+        epoch_loss = 0.0
+        epoch_drift_norm = 0.0
+        num_batches = 0
+
         # Fill queue at start of each epoch
-        fill_queue(queue, train_loader, config, device, min_samples=64)
+        fill_queue(queue, train_loader, device, min_samples=64)
 
         for batch_idx, batch in enumerate(train_loader):
-            x_real = batch_to_images(batch, config, device)
+            if isinstance(batch, (list, tuple)):
+                x_real = batch[0].to(device)
+            else:
+                x_real = batch.to(device)
 
             # Add to queue
             queue.add(x_real.cpu())
@@ -787,12 +525,198 @@ def train(
             # Training step
             info = train_step(
                 model,
+                optimizer,
                 queue,
                 config,
                 device,
                 feature_encoder,
             )
 
+            # Update EMA and scheduler
+            ema.update(model)
+            scheduler.step()
+
+            # Accumulate metrics
+            epoch_loss += info["loss"]
+            epoch_drift_norm += info["drift_norm"]
+            num_batches += 1
+            global_step += 1
+
+            # Logging
+            if global_step % log_interval == 0:
+                lr = scheduler.get_lr()
+                print(
+                    f"Epoch {epoch+1}/{config['epochs']} | "
+                    f"Step {global_step} | "
+                    f"Loss: {info['loss']:.4f} | "
+                    f"Drift: {info['drift_norm']:.4f} | "
+                    f"Grad: {info['grad_norm']:.4f} | "
+                    f"LR: {lr:.6f}"
+                )
+                if wandb_run is not None:
+                    wandb.log(
+                        {
+                            "train/loss": info["loss"],
+                            "train/drift_norm": info["drift_norm"],
+                            "train/grad_norm": info["grad_norm"],
+                            "train/lr": lr,
+                            "train/epoch": epoch + 1,
+                        },
+                        step=global_step,
+                    )
+
+            # Generate samples every 500 steps for quick visualization
+            if global_step % 500 == 0:
+                sample_path = output_dir / f"samples_step{global_step}.png"
+                real_sample_path = output_dir / f"real_samples_step{global_step}.png"
+                generate_samples(
+                    ema.shadow,
+                    config,
+                    device,
+                    str(sample_path),
+                    num_samples=80,
+                )
+                save_real_time_series_samples(
+                    train_dataset,
+                    config,
+                    device,
+                    str(real_sample_path),
+                    num_samples=80,
+                    num_workers=num_workers,
+                )
+                print(f"Saved samples to {sample_path}")
+                print(f"Saved real samples to {real_sample_path}")
+                if wandb_run is not None:
+                    wandb.log(
+                        {
+                            "samples/step": wandb.Image(str(sample_path)),
+                            "samples/real_step": wandb.Image(str(real_sample_path)),
+                        },
+                        step=global_step,
+                    )
+
+            if (
+                metric_names
+                and eval_step_interval > 0
+                and global_step % eval_step_interval == 0
+            ):
+                try:
+                    metric_results = {}
+                    for split, eval_dataset in (
+                        ("train", train_dataset),
+                        ("test", test_dataset),
+                    ):
+                        split_output_dir = output_dir / "metric_samples" / split
+                        split_results = evaluate_time_series_metrics(
+                            ema.shadow,
+                            eval_dataset,
+                            config,
+                            device,
+                            eval_metrics=metric_names,
+                            num_samples=eval_num_samples,
+                            metric_iteration=metric_iteration,
+                            num_workers=num_workers,
+                            base_path=metrics_base_path,
+                            vae_ckpt_root=vae_ckpt_root,
+                            output_dir=split_output_dir,
+                            step=global_step,
+                        )
+                        metric_results.update(
+                            prefix_metric_results(split_results, split)
+                        )
+                    metric_str = " | ".join(
+                        f"{key}: {value:.4f}" for key, value in metric_results.items()
+                    )
+                    print(f"Metrics step {global_step} | {metric_str}")
+                    if wandb_run is not None:
+                        wandb.log(metric_results, step=global_step)
+                except Exception as exc:
+                    print(f"Metric evaluation failed at step {global_step}: {exc}")
+                    if wandb_run is not None:
+                        wandb.log(
+                            {"metric/eval_failed": 1, "metric/eval_error": str(exc)},
+                            step=global_step,
+                        )
+
+        # Epoch summary
+        epoch_time = time.time() - epoch_start
+        avg_loss = epoch_loss / max(num_batches, 1)
+        avg_drift = epoch_drift_norm / max(num_batches, 1)
+        print(
+            f"\nEpoch {epoch+1} completed in {epoch_time:.1f}s | "
+            f"Avg Loss: {avg_loss:.4f} | "
+            f"Avg Drift Norm: {avg_drift:.4f}\n"
+        )
+        if wandb_run is not None:
+            wandb.log(
+                {
+                    "epoch/loss": avg_loss,
+                    "epoch/drift_norm": avg_drift,
+                    "epoch/time_sec": epoch_time,
+                },
+                step=global_step,
+            )
+
+        # Save checkpoint
+        if (epoch + 1) % save_interval == 0:
+            ckpt_path = output_dir / f"checkpoint_epoch{epoch+1}.pt"
+            save_checkpoint(
+                str(ckpt_path),
+                model,
+                ema,
+                optimizer,
+                scheduler,
+                epoch,
+                global_step,
+                config,
+            )
+            print(f"Saved checkpoint to {ckpt_path}")
+
+        # Generate samples
+        if (epoch + 1) % sample_interval == 0:
+            sample_path = output_dir / f"samples_epoch{epoch+1}.png"
+            real_sample_path = output_dir / f"real_samples_epoch{epoch+1}.png"
+            generate_samples(
+                ema.shadow,
+                config,
+                device,
+                str(sample_path),
+                num_samples=80,
+            )
+            save_real_time_series_samples(
+                train_dataset,
+                config,
+                device,
+                str(real_sample_path),
+                num_samples=80,
+                num_workers=num_workers,
+            )
+            print(f"Saved samples to {sample_path}")
+            print(f"Saved real samples to {real_sample_path}")
+            if wandb_run is not None:
+                wandb.log(
+                    {
+                        "samples/epoch": wandb.Image(str(sample_path)),
+                        "samples/real_epoch": wandb.Image(str(real_sample_path)),
+                    },
+                    step=global_step,
+                )
+
+    # Final checkpoint
+    final_path = output_dir / "checkpoint_final.pt"
+    save_checkpoint(
+        str(final_path),
+        model,
+        ema,
+        optimizer,
+        scheduler,
+        config["epochs"] - 1,
+        global_step,
+        config,
+    )
+    print(f"Training complete! Final checkpoint saved to {final_path}")
+    if wandb_run is not None:
+        wandb.finish()
 
 
 def save_time_series_grid(
@@ -841,7 +765,7 @@ def save_real_time_series_samples(
     num_samples: int = 80,
     num_workers: int = 0,
 ):
-    """Collect real AI-READI glucose samples and save them as time-series plots."""
+    """Collect real delay-embedded samples and save them as time-series plots."""
     series = collect_real_time_series(
         dataset,
         config,
@@ -850,62 +774,6 @@ def save_real_time_series_samples(
         num_workers=num_workers,
     )
     save_time_series_grid(series, save_path, ncol=8)
-
-
-@torch.no_grad()
-def collect_real_time_series(
-    dataset: Dataset,
-    config: dict,
-    device: torch.device,
-    num_samples: Optional[int] = None,
-    batch_size: int = 256,
-    num_workers: int = 0,
-) -> torch.Tensor:
-    """Collect real target glucose sequences from AI-READI dict batches."""
-    if num_samples is None:
-        num_samples = len(dataset)
-
-    loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        shuffle=False,
-        num_workers=num_workers,
-        pin_memory=True,
-        drop_last=False,
-    )
-    all_series = []
-    num_collected = 0
-
-    for batch in loader:
-        if isinstance(batch, (list, tuple)):
-            series = batch[0]
-        elif torch.is_tensor(batch):
-            if batch.ndim == 4:
-                images = batch
-                needed = num_samples - num_collected
-                images = images[:needed]
-                all_series.append(delay_images_to_series(images, config, device).detach().cpu())
-                num_collected += images.shape[0]
-                if num_collected >= num_samples:
-                    break
-                continue
-            series = batch
-        else:
-            series = batch["target"]
-
-        needed = num_samples - num_collected
-        series = series[:needed]
-        if series.ndim == 2:
-            series = series.unsqueeze(-1)
-        all_series.append(series.detach().cpu())
-        num_collected += series.shape[0]
-        if num_collected >= num_samples:
-            break
-
-    if not all_series:
-        raise ValueError("No real time-series samples were collected.")
-
-    return torch.cat(all_series, dim=0)[:num_samples]
 
 
 @torch.no_grad()
@@ -931,110 +799,6 @@ def generate_samples(
     return samples
 
 
-@torch.no_grad()
-def generate_time_series_samples(
-    model: nn.Module,
-    config: dict,
-    device: torch.device,
-    num_samples: int,
-    batch_size: int = 256,
-) -> torch.Tensor:
-    """Generate unconditional time-series samples from a delay-image generator."""
-    model.eval()
-    all_series = []
-
-    for start in range(0, num_samples, batch_size):
-        current_batch = min(batch_size, num_samples - start)
-        noise = torch.randn(
-            current_batch,
-            config["in_channels"],
-            config["img_size"],
-            config["img_size"],
-            device=device,
-        )
-        samples = model(noise)
-        all_series.append(delay_images_to_series(samples, config, device).detach().cpu())
-
-    return torch.cat(all_series, dim=0)
-
-
-def evaluate_unconditional_time_series_metrics(
-    model: nn.Module,
-    test_dataset: Dataset,
-    config: dict,
-    device: torch.device,
-    eval_metrics: list,
-    metric_iteration: int,
-    num_workers: int,
-    num_samples: Optional[int] = None,
-    base_path: Optional[str] = None,
-    vae_ckpt_root: Optional[str] = None,
-    output_dir: Optional[Path] = None,
-    step: Optional[int] = None,
-) -> Dict[str, Any]:
-    """Run time-series metrics for unconditional AI-READI glucose generation."""
-    if num_samples is None:
-        num_samples = int(config.get("eval_num_samples") or 1000)
-    eval_size = min(num_samples, len(test_dataset))
-    real_sig = collect_real_time_series(
-        test_dataset,
-        config,
-        device,
-        num_samples=eval_size,
-        num_workers=num_workers,
-    ).numpy().astype(np.float32)
-    gen_sig = generate_time_series_samples(
-        model,
-        config,
-        device,
-        num_samples=eval_size,
-    ).numpy().astype(np.float32)
-
-    if output_dir is not None and step is not None:
-        output_dir.mkdir(parents=True, exist_ok=True)
-        np.save(output_dir / f"real_test_step{step}.npy", real_sig)
-        np.save(output_dir / f"generated_step{step}.npy", gen_sig)
-
-    results: Dict[str, Any] = {"metric/eval_num_samples": int(eval_size)}
-
-    if "disc" in eval_metrics:
-        from metrics.discriminative_torch import discriminative_score_metrics
-
-        disc_scores = [
-            discriminative_score_metrics(real_sig, gen_sig, device)
-            for _ in range(metric_iteration)
-        ]
-        results["metric/disc_mean"] = float(np.round(np.mean(disc_scores), 4))
-        results["metric/disc_std"] = float(np.round(np.std(disc_scores), 4))
-
-    if "pred" in eval_metrics:
-        from metrics.predictive_metrics_pytorch import predictive_score_metrics
-
-        pred_scores = [
-            predictive_score_metrics(real_sig, gen_sig, device=device)
-            for _ in range(metric_iteration)
-        ]
-        results["metric/pred_mean"] = float(np.round(np.nanmean(pred_scores), 4))
-        results["metric/pred_std"] = float(np.round(np.nanstd(pred_scores), 4))
-
-    if "contextFID" in eval_metrics:
-        from metrics.context_fid import Context_FID
-
-        results["metric/context_fid"] = float(
-            Context_FID(real_sig, gen_sig, "glucose", device, base_path)
-        )
-
-    if "vaeFID" in eval_metrics:
-        from metrics.vae_fid import VAE_FID
-
-        vae_dataset = "glucose_daily" if config.get("window_mode") == "daily" else "glucose"
-        results["metric/vae_fid"] = float(
-            VAE_FID(real_sig, gen_sig, vae_dataset, device, vae_ckpt_root=vae_ckpt_root)
-        )
-
-    return results
-
-
 def main():
     parser = argparse.ArgumentParser(description="Train Drifting Models")
     parser.add_argument(
@@ -1043,12 +807,7 @@ def main():
         default="./outputs/glucose_unconditional_debug",
         help="Output directory",
     )
-    parser.add_argument(
-        "--data_root",
-        type=str,
-        default="./AI-READI",
-        help="Dataset root directory",
-    )
+
     parser.add_argument(
         "--seed",
         type=int,
@@ -1096,8 +855,8 @@ def main():
     parser.add_argument(
         "--eval_num_samples",
         type=int,
-        default=1000,
-        help="Number of real/generated samples for metrics.",
+        default=None,
+        help="Number of real/generated samples for metrics. Defaults to the full test set.",
     )
     parser.add_argument(
         "--metric_iteration",
@@ -1161,7 +920,7 @@ def main():
     )
 
     parser.add_argument("--model", type=str, default="DriftDiT-Tiny", choices=sorted(DriftDiT_models.keys()))
-    parser.add_argument("--img_size", type=int, default=18)
+    parser.add_argument("--img_size", type=int, default=12)
     parser.add_argument("--in_channels", type=int, default=1)
     parser.add_argument("--batch_n_pos", type=int, default=320)
     parser.add_argument("--batch_n_neg", type=int, default=320)
@@ -1176,31 +935,16 @@ def main():
     parser.add_argument("--loss_domain", type=str, default="time_series", choices=["time_series"])
     parser.add_argument("--queue_size", type=int, default=1280)
 
-    parser.add_argument("--ts_seq_len", type=int, default=288)
-    parser.add_argument("--ts_delay", type=int, default=18)
-    parser.add_argument("--ts_embedding", type=int, default=18)
-    parser.add_argument("--ts_stride", "--glucose_stride", dest="ts_stride", type=int, default=32)
-    parser.add_argument("--window_mode", type=str, default="daily", choices=["sliding", "daily"])
-    parser.add_argument(
-        "--daily_min_events",
-        type=int,
-        default=None,
-        help="Minimum glucose events required for a local calendar-day window. Defaults to ts_seq_len.",
-    )
+    parser.add_argument("--ts_seq_len", type=int, default=128)
+    parser.add_argument("--ts_delay", type=int, default=12)
+    parser.add_argument("--ts_embedding", type=int, default=12)
+    parser.add_argument("--ts_stride", "--glucose_stride", dest="ts_stride", type=int, default=128)
 
-    parser.add_argument("--modalities", type=parse_modalities, default=["glucose"])
-    parser.add_argument("--anchor_modality", type=str, default="glucose")
-    parser.add_argument("--target_modality", type=str, default="glucose")
-    parser.add_argument("--max_anchor_gap_minutes", type=float, default=10.0)
-    parser.add_argument("--max_window_span_hours", type=float, default=14.0)
-    parser.add_argument("--anchor_sampling_minutes", type=float, default=5.0)
-    parser.add_argument("--anchor_sampling_tolerance_seconds", type=float, default=2.0)
-    parser.add_argument("--clinical_root", type=str, default=None)
-    parser.add_argument("--participants_tsv_path", type=str, default=None)
-    parser.add_argument("--include_clinical_static", action="store_true")
-    parser.add_argument("--include_participant_metadata", action="store_true", default=True)
-    parser.add_argument("--include_study_group", action="store_true", default=True)
-    parser.add_argument("--include_clinical_site", action="store_true")
+
+    parser.add_argument("--dataset_name", type=str, required=True)
+    parser.add_argument("--data", type=str, required=True)
+    parser.add_argument("--datasets_dir", type=str, required=True)
+    parser.add_argument("--rel_path", type=str, required=True)
 
     args = parser.parse_args()
     config = build_config(args)
@@ -1208,7 +952,6 @@ def main():
     train(
         config=config,
         output_dir=args.output_dir,
-        data_root=args.data_root,
         seed=args.seed,
         num_workers=args.num_workers,
         log_interval=args.log_interval,

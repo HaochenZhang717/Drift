@@ -3,11 +3,11 @@
 # =========================
 #export CUDA_VISIBLE_DEVICES=0
 
-DATA_ROOT=/Users/zhc/Downloads/AI-READI-Dataset/AI-READI-processed
+DATA_ROOT=/Users/zhc/Downloads/AI-READI-processed
 PARTICIPANTS_TSV=/Users/zhc/Downloads/AI-READI/participants.tsv
 
 
-PROJECT_ROOT=/playpen-shared/haochenz/Drift
+PROJECT_ROOT=/Users/zhc/Documents/PhD/projects/drifting-model
 OUTPUT_DIR=${PROJECT_ROOT}/outputs/glucose_uncond_daily
 VAE_ROOT=${PROJECT_ROOT}/fid_vae_ckpts
 
