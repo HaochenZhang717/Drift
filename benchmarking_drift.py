@@ -558,7 +558,7 @@ def train(
                 wandb.log(
                     {
                         "train/v_norm_step": info["v_norm"],
-                        "train/v_norm_step_ema": v_norm_ema,
+                        # "train/v_norm_step_ema": v_norm_ema,
                         "train/true_v_norm_step": info["true_v_norm"],  # ✅ 新增
                     },
                     step=global_step,
