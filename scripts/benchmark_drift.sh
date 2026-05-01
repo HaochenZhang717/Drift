@@ -48,7 +48,7 @@ DATASET_NAME=ETTm1
 IN_CHANNEL=7
 
 #PROJECT_ROOT="/Users/zhc/Documents/PhD/projects/drifting-model"
-PROJECT_ROOT="/playpen-shared/haochenz/drifting-model"
+PROJECT_ROOT="/playpen-shared/haochenz/Drift"
 OUTPUT_DIR="${PROJECT_ROOT}/outputs/${DATA_BACKEND}"
 VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts"
 
