@@ -2,7 +2,6 @@ import os
 import argparse
 import numpy as np
 import torch
-from sklearn.preprocessing import MinMaxScaler
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
@@ -42,11 +41,6 @@ def get_args():
     # misc
     parser.add_argument("--save_dir", type=str, default="./fid_vae_ckpts/benchmark")
     parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument(
-        "--scale",
-        action="store_true",
-        help="Fit MinMaxScaler on train split and scale all splits to [-1, 1].",
-    )
     return parser.parse_args()
 
 
@@ -71,35 +65,17 @@ def _extract_series(item):
     return x
 
 
-def _fit_scaler(base_dataset):
-    rows = []
-    for i in range(len(base_dataset)):
-        rows.append(_extract_series(base_dataset[i]))
-    train_data = np.stack(rows, axis=0)  # (N, T, C)
-    scaler = MinMaxScaler(feature_range=(-1, 1))
-    scaler.fit(train_data.reshape(-1, train_data.shape[-1]))
-    return scaler
-
-
-def _transform_series(x, scaler):
-    if scaler is None:
-        return x
-    return scaler.transform(x).astype(np.float32)
-
-
 class BenchmarkTensorDataset(Dataset):
     """Expose benchmark samples as FIDVAE tensors, shape (C, T)."""
 
-    def __init__(self, base_dataset, scaler=None):
+    def __init__(self, base_dataset):
         self.base_dataset = base_dataset
-        self.scaler = scaler
 
     def __len__(self):
         return len(self.base_dataset)
 
     def __getitem__(self, idx):
         series = _extract_series(self.base_dataset[idx])  # (T, C)
-        series = _transform_series(series, self.scaler)
         tensor = torch.from_numpy(series).permute(1, 0).contiguous()  # (C, T)
         return (tensor,)
 
@@ -119,18 +95,16 @@ def load_benchmark_datasets(args):
     train_base = get_train(_make_dataset_config(args, args.train_split))
     val_base = get_test(_make_dataset_config(args, args.val_split))
 
-    scaler = _fit_scaler(train_base) if args.scale else None
-    train_dataset = BenchmarkTensorDataset(train_base, scaler=scaler)
-    val_dataset = BenchmarkTensorDataset(val_base, scaler=scaler)
+    train_dataset = BenchmarkTensorDataset(train_base)
+    val_dataset = BenchmarkTensorDataset(val_base)
 
     sample = train_dataset[0][0]
     print(
         f"Loaded benchmark dataset | data={args.data} | rel_path={args.rel_path} | "
-        f"train={len(train_dataset)} | val={len(val_dataset)} | sample={tuple(sample.shape)} | "
-        f"scale={args.scale}",
+        f"train={len(train_dataset)} | val={len(val_dataset)} | sample={tuple(sample.shape)}",
         flush=True,
     )
-    return train_dataset, val_dataset, scaler
+    return train_dataset, val_dataset
 
 
 def train_one_epoch(model, dataloader, optimizer, device):
@@ -184,7 +158,7 @@ def validate(model, dataloader, device):
 
 def train(args):
     device = args.device if torch.cuda.is_available() else "cpu"
-    train_dataset, val_dataset, scaler = load_benchmark_datasets(args)
+    train_dataset, val_dataset = load_benchmark_datasets(args)
 
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True)
     val_loader = DataLoader(val_dataset, batch_size=args.batch_size, shuffle=False)
@@ -214,19 +188,8 @@ def train(args):
         ts_seq_len=np.array(args.ts_seq_len, dtype=np.int64),
         train_size=np.array(len(train_dataset), dtype=np.int64),
         val_size=np.array(len(val_dataset), dtype=np.int64),
-        scale=np.array(args.scale, dtype=bool),
+        extra_scale=np.array(False, dtype=bool),
     )
-
-    if scaler is not None:
-        np.savez(
-            os.path.join(save_dir, "scaler_stats.npz"),
-            data_min=scaler.data_min_.astype(np.float32),
-            data_max=scaler.data_max_.astype(np.float32),
-            data_range=scaler.data_range_.astype(np.float32),
-            scale=scaler.scale_.astype(np.float32),
-            min=scaler.min_.astype(np.float32),
-            feature_range=np.array(scaler.feature_range, dtype=np.float32),
-        )
 
     best_val_loss = float("inf")
     for epoch in range(args.epochs):

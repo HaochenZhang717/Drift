@@ -1,7 +1,7 @@
 
 
 python train_fid_vae_benchmark.py \
-  --dataset_name "${DATASET_NAME}" \
+  --dataset_name "/playpen-shared/haochenz/ImagenFew/data" \
   --data "ETTm1" \
   --datasets_dir "ETTm1" \
   --rel_path "TSF/ETT-small/ETTm1.csv" \
