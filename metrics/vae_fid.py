@@ -125,6 +125,11 @@ def _load_model_state_dict(ckpt_path, device):
     return state
 
 
+def _infer_ckpt_input_dim(state_dict):
+    # encoder.conv.0.weight shape: (hidden_size//2, input_dim, kernel)
+    return int(state_dict["encoder.conv.0.weight"].shape[1])
+
+
 def _infer_vae_hparams_from_state(state_dict):
     # encoder.to_mu.weight: (latent_dim, hidden_size)
     to_mu_w = state_dict["encoder.to_mu.weight"]
@@ -178,10 +183,39 @@ def VAE_FID(
 ):
     real_tensor = _to_bct(ori_data)
     fake_tensor = _to_bct(generated_data)
-
-    ckpt_path = _resolve_ckpt_path(dataset, vae_ckpt_root, ckpt_name=vae_ckpt_name)
     channels = real_tensor.shape[1]
-    state_dict = _load_model_state_dict(ckpt_path, device)
+
+    dataset_candidates = [dataset]
+    if channels == 1 and not str(dataset).endswith("_one_channel"):
+        dataset_candidates.insert(0, f"{dataset}_one_channel")
+
+    selected = None
+    tried_msgs = []
+    for dataset_name in dataset_candidates:
+        try:
+            ckpt_path = _resolve_ckpt_path(dataset_name, vae_ckpt_root, ckpt_name=vae_ckpt_name)
+        except FileNotFoundError as exc:
+            tried_msgs.append(str(exc))
+            continue
+
+        state_dict = _load_model_state_dict(ckpt_path, device)
+        ckpt_in_dim = _infer_ckpt_input_dim(state_dict)
+        if ckpt_in_dim != channels:
+            tried_msgs.append(
+                f"Found checkpoint at {ckpt_path}, but input_dim={ckpt_in_dim} "
+                f"does not match evaluated channels={channels}."
+            )
+            continue
+        selected = (dataset_name, ckpt_path, state_dict)
+        break
+
+    if selected is None:
+        raise RuntimeError(
+            "No compatible FID-VAE checkpoint was found for evaluation.\n"
+            + "\n".join(tried_msgs)
+        )
+
+    _, ckpt_path, state_dict = selected
     hp = _infer_vae_hparams_from_state(state_dict)
 
     model = FIDVAE(
