@@ -66,11 +66,31 @@ def _extract_series(item):
     return x
 
 
+def _fit_minmax_stats(base_dataset, one_channel=False):
+    data_min = None
+    data_max = None
+    for idx in range(len(base_dataset)):
+        series = _extract_series(base_dataset[idx])  # (T, C)
+        tensor = torch.from_numpy(series)
+        if one_channel:
+            tensor = tensor[:, :1]
+        sample_min = tensor.amin(dim=0)
+        sample_max = tensor.amax(dim=0)
+        data_min = sample_min if data_min is None else torch.minimum(data_min, sample_min)
+        data_max = sample_max if data_max is None else torch.maximum(data_max, sample_max)
+    if data_min is None or data_max is None:
+        raise ValueError("Cannot fit min-max statistics on an empty dataset.")
+    return data_min.to(torch.float32), data_max.to(torch.float32)
+
+
 class BenchmarkTensorDataset(Dataset):
     """Expose benchmark samples as FIDVAE tensors, shape (C, T)."""
 
-    def __init__(self, base_dataset, one_channel=False):
+    def __init__(self, base_dataset, data_min, data_max, one_channel=False):
         self.base_dataset = base_dataset
+        self.data_min = data_min
+        self.data_max = data_max
+        self.denom = torch.clamp(self.data_max - self.data_min, min=1e-6)
         self.one_channel = one_channel
 
     def __len__(self):
@@ -78,9 +98,12 @@ class BenchmarkTensorDataset(Dataset):
 
     def __getitem__(self, idx):
         series = _extract_series(self.base_dataset[idx])  # (T, C)
-        tensor = torch.from_numpy(series).permute(1, 0).contiguous()  # (C, T)
         if self.one_channel:
-            return (tensor[:1],)
+            series = series[:, :1]
+        tensor = torch.from_numpy(series).to(torch.float32)
+        tensor = torch.clamp((tensor - self.data_min) / self.denom, 0.0, 1.0)
+        tensor = tensor * 2.0 - 1.0
+        tensor = tensor.permute(1, 0).contiguous()  # (C, T)
         return (tensor,)
 
 
@@ -100,9 +123,20 @@ def _make_dataset_config(args, flag):
 def load_benchmark_datasets(args):
     train_base = get_train(_make_dataset_config(args, args.train_split))
     val_base = get_test(_make_dataset_config(args, args.val_split))
+    data_min, data_max = _fit_minmax_stats(train_base, one_channel=args.one_channel)
 
-    train_dataset = BenchmarkTensorDataset(train_base, one_channel=args.one_channel)
-    val_dataset = BenchmarkTensorDataset(val_base, one_channel=args.one_channel)
+    train_dataset = BenchmarkTensorDataset(
+        train_base,
+        data_min=data_min,
+        data_max=data_max,
+        one_channel=args.one_channel,
+    )
+    val_dataset = BenchmarkTensorDataset(
+        val_base,
+        data_min=data_min,
+        data_max=data_max,
+        one_channel=args.one_channel,
+    )
 
     sample = train_dataset[0][0]
     print(

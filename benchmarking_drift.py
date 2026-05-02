@@ -365,6 +365,63 @@ class DelayEmbeddingImageDataset(Dataset):
         return img.squeeze(0)
 
 
+def _extract_ts_sample(sample: Any) -> torch.Tensor:
+    if isinstance(sample, (list, tuple)):
+        sample = sample[0]
+    if not torch.is_tensor(sample):
+        sample = torch.as_tensor(sample, dtype=torch.float32)
+    sample = sample.to(torch.float32)
+    if sample.ndim == 1:
+        sample = sample.unsqueeze(-1)
+    if sample.ndim != 2:
+        raise ValueError(f"Expected time-series sample shape (T, C), got {tuple(sample.shape)}")
+    return sample
+
+
+def _fit_minmax_stats(base_dataset: Dataset, one_channel: bool = False) -> tuple[torch.Tensor, torch.Tensor]:
+    data_min = None
+    data_max = None
+    for idx in range(len(base_dataset)):
+        sample = _extract_ts_sample(base_dataset[idx])
+        if one_channel:
+            sample = sample[:, :1]
+        sample_min = sample.amin(dim=0)
+        sample_max = sample.amax(dim=0)
+        data_min = sample_min if data_min is None else torch.minimum(data_min, sample_min)
+        data_max = sample_max if data_max is None else torch.maximum(data_max, sample_max)
+    if data_min is None or data_max is None:
+        raise ValueError("Cannot fit min-max statistics on an empty dataset.")
+    return data_min, data_max
+
+
+class MinMaxNormalizedTimeSeriesDataset(Dataset):
+    """Normalize each channel to [-1, 1] using train-split min/max statistics."""
+
+    def __init__(
+        self,
+        base_dataset: Dataset,
+        data_min: torch.Tensor,
+        data_max: torch.Tensor,
+        one_channel: bool = False,
+    ):
+        self.base_dataset = base_dataset
+        self.data_min = data_min.to(torch.float32)
+        self.data_max = data_max.to(torch.float32)
+        self.one_channel = one_channel
+        self.denom = torch.clamp(self.data_max - self.data_min, min=1e-6)
+
+    def __len__(self) -> int:
+        return len(self.base_dataset)
+
+    def __getitem__(self, idx: int) -> torch.Tensor:
+        sample = _extract_ts_sample(self.base_dataset[idx])
+        if self.one_channel:
+            sample = sample[:, :1]
+        sample = torch.clamp((sample - self.data_min) / self.denom, 0.0, 1.0)
+        sample = sample * 2.0 - 1.0
+        return sample
+
+
 def prefix_metric_results(results: Dict[str, Any], split: str) -> Dict[str, Any]:
     """Prefix metric keys with the evaluated data split."""
     return {
@@ -456,6 +513,23 @@ def train(
 
     train_dataset = get_train(dataset_config.copy())  # torch.utils.data.Dataset
     test_dataset = get_test(dataset_config.copy())
+
+    data_min, data_max = _fit_minmax_stats(
+        train_dataset,
+        one_channel=bool(config.get("one_channel", False)),
+    )
+    train_dataset = MinMaxNormalizedTimeSeriesDataset(
+        train_dataset,
+        data_min=data_min,
+        data_max=data_max,
+        one_channel=bool(config.get("one_channel", False)),
+    )
+    test_dataset = MinMaxNormalizedTimeSeriesDataset(
+        test_dataset,
+        data_min=data_min,
+        data_max=data_max,
+        one_channel=bool(config.get("one_channel", False)),
+    )
     train_dataset = DelayEmbeddingImageDataset(train_dataset, config)
     test_dataset = DelayEmbeddingImageDataset(test_dataset, config)
     # Load dataset
