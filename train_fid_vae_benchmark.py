@@ -80,7 +80,7 @@ class BenchmarkTensorDataset(Dataset):
         series = _extract_series(self.base_dataset[idx])  # (T, C)
         tensor = torch.from_numpy(series).permute(1, 0).contiguous()  # (C, T)
         if self.one_channel:
-            return (tensor[:0],)
+            return (tensor[:1],)
         return (tensor,)
 
 
@@ -101,8 +101,8 @@ def load_benchmark_datasets(args):
     train_base = get_train(_make_dataset_config(args, args.train_split))
     val_base = get_test(_make_dataset_config(args, args.val_split))
 
-    train_dataset = BenchmarkTensorDataset(train_base)
-    val_dataset = BenchmarkTensorDataset(val_base)
+    train_dataset = BenchmarkTensorDataset(train_base, one_channel=args.one_channel)
+    val_dataset = BenchmarkTensorDataset(val_base, one_channel=args.one_channel)
 
     sample = train_dataset[0][0]
     print(
