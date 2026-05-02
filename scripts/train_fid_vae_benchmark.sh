@@ -6,7 +6,8 @@ python train_fid_vae_benchmark.py \
   --ts_seq_len 256 \
   --batch_size 128 \
   --epochs 100 \
-  --save_dir ./fid_vae_ckpts/benchmark
+  --save_dir ./fid_vae_ckpts/benchmark \
+  --one_channel
 
 
 python train_fid_vae_benchmark.py \
@@ -17,7 +18,9 @@ python train_fid_vae_benchmark.py \
   --ts_seq_len 256 \
   --batch_size 128 \
   --epochs 100 \
-  --save_dir ./fid_vae_ckpts/benchmark
+  --save_dir ./fid_vae_ckpts/benchmark \
+  --one_channel
+
 
 
 python train_fid_vae_benchmark.py \
@@ -28,7 +31,8 @@ python train_fid_vae_benchmark.py \
   --ts_seq_len 256 \
   --batch_size 128 \
   --epochs 100 \
-  --save_dir ./fid_vae_ckpts/benchmark
+  --save_dir ./fid_vae_ckpts/benchmark \
+  --one_channel
 
 python train_fid_vae_benchmark.py \
   --dataset_name "Weather" \
@@ -38,7 +42,8 @@ python train_fid_vae_benchmark.py \
   --ts_seq_len 256 \
   --batch_size 128 \
   --epochs 100 \
-  --save_dir ./fid_vae_ckpts/benchmark
+  --save_dir ./fid_vae_ckpts/benchmark \
+  --one_channel
 
 python train_fid_vae_benchmark.py \
   --dataset_name "AirQuality" \
@@ -48,4 +53,5 @@ python train_fid_vae_benchmark.py \
   --ts_seq_len 256 \
   --batch_size 128 \
   --epochs 100 \
-  --save_dir ./fid_vae_ckpts/benchmark
+  --save_dir ./fid_vae_ckpts/benchmark \
+  --one_channel
