@@ -37,6 +37,7 @@ def get_args():
     parser.add_argument("--num_heads", type=int, default=8)
     parser.add_argument("--latent_dim", type=int, default=128)
     parser.add_argument("--beta", type=float, default=0.01)
+    parser.add_argument("--one_channel", action="store_true")
 
     # misc
     parser.add_argument("--save_dir", type=str, default="./fid_vae_ckpts/benchmark")
@@ -68,8 +69,9 @@ def _extract_series(item):
 class BenchmarkTensorDataset(Dataset):
     """Expose benchmark samples as FIDVAE tensors, shape (C, T)."""
 
-    def __init__(self, base_dataset):
+    def __init__(self, base_dataset, one_channel=False):
         self.base_dataset = base_dataset
+        self.one_channel = one_channel
 
     def __len__(self):
         return len(self.base_dataset)
@@ -77,6 +79,8 @@ class BenchmarkTensorDataset(Dataset):
     def __getitem__(self, idx):
         series = _extract_series(self.base_dataset[idx])  # (T, C)
         tensor = torch.from_numpy(series).permute(1, 0).contiguous()  # (C, T)
+        if self.one_channel:
+            return (tensor[:0],)
         return (tensor,)
 
 
@@ -181,7 +185,11 @@ def train(args):
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.001)
 
-    save_dir = os.path.join(args.save_dir, args.dataset_name)
+    if args.one_channel:
+        save_dir = os.path.join(args.save_dir, f"{args.dataset_name}_one_channel")
+    else:
+        save_dir = os.path.join(args.save_dir, args.dataset_name)
+
     os.makedirs(save_dir, exist_ok=True)
     np.savez(
         os.path.join(save_dir, "dataset_metadata.npz"),
