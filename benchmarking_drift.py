@@ -75,7 +75,7 @@ def build_config(args: argparse.Namespace) -> Dict[str, Any]:
         "model",
         "img_size",
         "in_channels",
-        "on_channel",
+        "one_channel",
         "batch_n_pos",
         "batch_n_neg",
         "temperatures",
@@ -100,7 +100,7 @@ def build_config(args: argparse.Namespace) -> Dict[str, Any]:
     ]
 
     config = {key: getattr(args, key) for key in config_keys}
-    if config["on_channel"]:
+    if config["one_channel"]:
         config["in_channels"] = 1
     return config
 
@@ -336,7 +336,7 @@ class DelayEmbeddingImageDataset(Dataset):
 
     def __init__(self, base_dataset: Dataset, config: Dict[str, Any]):
         self.base_dataset = base_dataset
-        self.on_channel = bool(config.get("on_channel", False))
+        self.one_channel = bool(config.get("one_channel", False))
         self.embedder = DelayEmbedder(
             device=torch.device("cpu"),
             seq_len=config["ts_seq_len"],
@@ -358,7 +358,7 @@ class DelayEmbeddingImageDataset(Dataset):
             sample = sample.unsqueeze(-1)
         if sample.ndim != 2:
             raise ValueError(f"Expected time-series sample shape (T, C), got {tuple(sample.shape)}")
-        if self.on_channel:
+        if self.one_channel:
             sample = sample[:, :1]
 
         img = self.embedder.ts_to_img(sample.unsqueeze(0), pad=True)
@@ -412,7 +412,7 @@ def train(
     config["train_batch_size"] = batch_size
     config["dataset"] = (
         f"{config['dataset_name']}_one_channel"
-        if config.get("on_channel")
+        if config.get("one_channel")
         else config["dataset_name"]
     )
     # config["dataset"] = config["data"]
@@ -1034,7 +1034,7 @@ def main():
     parser.add_argument("--model", type=str, default="DriftDiT-Tiny", choices=sorted(DriftDiT_models.keys()))
     parser.add_argument("--img_size", type=int, default=12)
     parser.add_argument("--in_channels", type=int, default=1)
-    parser.add_argument("--on_channel", action="store_true")
+    parser.add_argument("--one_channel", action="store_true")
     parser.add_argument("--batch_n_pos", type=int, default=320)
     parser.add_argument("--batch_n_neg", type=int, default=320)
     parser.add_argument("--temperatures", type=parse_temperatures, default=[0.02, 0.05, 0.2])

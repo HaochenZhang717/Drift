@@ -55,7 +55,7 @@ REL_PATH=${REL_PATH:-TSF/weather/weather.csv}
 DATA_BACKEND=${DATA_BACKEND:-Weather}
 DATASET_NAME=${DATASET_NAME:-custom}
 IN_CHANNEL=${IN_CHANNEL-6}
-ON_CHANNEL=${ON_CHANNEL:-0}
+ONE_CHANNEL=${ONE_CHANNEL:-${ON_CHANNEL:-0}}
 
 
 
@@ -76,9 +76,9 @@ OUTPUT_DIR="${PROJECT_ROOT}/outputs/benchmark${TS_LEN}/${DATA_BACKEND}"
 VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts/benchmark_${TS_LEN}"
 VAE_CKPT_NAME=${VAE_CKPT_NAME:-last.pt}
 
-ON_CHANNEL_ARG=""
-if [[ "${ON_CHANNEL}" == "1" ]]; then
-  ON_CHANNEL_ARG="--on_channel"
+ONE_CHANNEL_ARG=""
+if [[ "${ONE_CHANNEL}" == "1" ]]; then
+  ONE_CHANNEL_ARG="--one_channel"
   IN_CHANNEL=1
 fi
 
@@ -98,7 +98,7 @@ python benchmarking_drift.py \
     --model DriftDiT-Tiny \
     --img_size ${IMG_SIZE} \
     --in_channels ${IN_CHANNEL} \
-    ${ON_CHANNEL_ARG} \
+    ${ONE_CHANNEL_ARG} \
     \
     --batch_n_pos ${BS_POS} \
     --batch_n_neg ${BATCH_SIZE} \
