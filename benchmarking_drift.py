@@ -715,14 +715,14 @@ def train(
                 )
                 print(f"Saved samples to {sample_path}")
                 print(f"Saved real samples to {real_sample_path}")
-                if wandb_run is not None:
-                    wandb.log(
-                        {
-                            "samples/step": wandb.Image(str(sample_path)),
-                            "samples/real_step": wandb.Image(str(real_sample_path)),
-                        },
-                        step=global_step,
-                    )
+                # if wandb_run is not None:
+                #     wandb.log(
+                #         {
+                #             "samples/step": wandb.Image(str(sample_path)),
+                #             "samples/real_step": wandb.Image(str(real_sample_path)),
+                #         },
+                #         step=global_step,
+                #     )
 
             if (
                 metric_names
@@ -851,14 +851,14 @@ def train(
             )
             print(f"Saved samples to {sample_path}")
             print(f"Saved real samples to {real_sample_path}")
-            if wandb_run is not None:
-                wandb.log(
-                    {
-                        "samples/epoch": wandb.Image(str(sample_path)),
-                        "samples/real_epoch": wandb.Image(str(real_sample_path)),
-                    },
-                    step=global_step,
-                )
+            # if wandb_run is not None:
+            #     wandb.log(
+            #         {
+            #             "samples/epoch": wandb.Image(str(sample_path)),
+            #             "samples/real_epoch": wandb.Image(str(real_sample_path)),
+            #         },
+            #         step=global_step,
+            #     )
 
     # Final checkpoint
     final_path = output_dir / "checkpoint_final.pt"
