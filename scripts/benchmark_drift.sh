@@ -133,4 +133,4 @@ python benchmarking_drift.py \
     \
     --wandb \
     --wandb_project BenchmarkingDrift \
-    --wandb_run_name "${DATASET_NAME}_${TS_LEN}"
+    --wandb_run_name "${DATASET_NAME}_${TS_LEN}_C${IN_CHANNEL}"
