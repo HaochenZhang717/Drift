@@ -25,7 +25,7 @@ set -euo pipefail
 PROJECT_ROOT=/playpen-shared/haochenz/Drift \
 VAE_ROOT=/playpen-shared/haochenz/Drift/fid_vae_ckpts \
 VAE_CKPT_NAME=best.pt \
-bash scripts/eval_benchmark_vae_fid.py \
+bash eval_benchmark_vae_fid.py \
   --single_dataset_name glucose_daily \
   --single_run_dir /playpen-shared/haochenz/ImagenFew/logs/ImagenTime/glucose_npy/3a02d76c-d860-44fd-974b-b3f4496cdedb \
   --num_repeats 1 \
