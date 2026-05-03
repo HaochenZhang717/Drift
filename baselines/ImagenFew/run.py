@@ -18,6 +18,17 @@ from data_provider.combined_datasets import dataset_list
 from importlib import import_module
 
 
+def _extract_real_tensor(dataset):
+    if hasattr(dataset, "primary_tensor"):
+        return dataset.primary_tensor
+    if hasattr(dataset, "tensors"):
+        return dataset.tensors[0]
+    if isinstance(dataset, (tuple, list)):
+        return dataset[0]
+    return dataset
+
+
+
 def _save_eval_samples(args, dataset_name, epoch, real_set, generated_set):
     samples_dir = os.path.join(os.path.dirname(args.log_dir), "eval_samples")
     os.makedirs(samples_dir, exist_ok=True)
@@ -85,7 +96,8 @@ def main(args):
             handler.train_iter(dataset_loader, logger)
 
             # --- evaluation loop ---
-            if epoch % args.logging_iter == 0:
+            # if epoch % args.logging_iter == 0:
+            if epoch % 1 == 0:
                 if not args.no_test_model:
                     scores_mean = {'disc_mean': [], 'disc_std': [], 'pred_mean': [], 'pred_std': [], 'context_fid': []}
                     for dataset in args.train_on_datasets:
