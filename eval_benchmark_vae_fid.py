@@ -94,17 +94,22 @@ def evaluate_one(
     sampled_ts = payload["sampled_ts"].to(torch.float32)
 
     real_sub, sampled_sub = sample_pair(real_ts, sampled_ts, n=num_samples, seed=seed)
-    real_norm, sampled_norm, norm_debug = normalize_to_minus1_1_by_real(
-        real_sub, sampled_sub, fit_real_ts=real_ts
-    )
+    # real_norm, sampled_norm, norm_debug = normalize_to_minus1_1_by_real(
+    #     real_sub, sampled_sub, fit_real_ts=real_ts
+    # )
+
+    real_norm = real_sub
+    sampled_norm = sampled_sub
 
     if print_stats:
         print(f"[stats] file={pt_path.name}, seed={seed}")
-        print(f"[stats] raw_real     {tensor_stats(real_sub)}")
-        print(f"[stats] raw_sampled  {tensor_stats(sampled_sub)}")
-        print(f"[stats] norm_real    {tensor_stats(real_norm)}")
-        print(f"[stats] norm_sampled {tensor_stats(sampled_norm)}")
-        print(f"[stats] norm_debug   {norm_debug}")
+        print(f"[stats] real data      {tensor_stats(real_norm)}")
+        print(f"[stats] generated data {tensor_stats(sampled_norm)}")
+        # print(f"[stats] raw_real     {tensor_stats(real_sub)}")
+        # print(f"[stats] raw_sampled  {tensor_stats(sampled_sub)}")
+        # print(f"[stats] norm_real    {tensor_stats(real_norm)}")
+        # print(f"[stats] norm_sampled {tensor_stats(sampled_norm)}")
+        # print(f"[stats] norm_debug   {norm_debug}")
 
     fid = VAE_FID(
         ori_data=real_norm,
