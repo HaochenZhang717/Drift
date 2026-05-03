@@ -1046,6 +1046,98 @@ class AIREADIModalityImputationDataset(Dataset):
             "present": torch.tensor(raw_length > 0),
         }
 
+    def _pack_daily_modality_aligned_to_glucose(
+        self,
+        patient_id: str,
+        window_start_ns: int,
+        window_end_ns: int,
+        source_modality: str,
+        fill_value: float = 0.0,
+    ) -> Dict[str, torch.Tensor]:
+        """Align source modality events to glucose timestamps inside a daily window.
+
+        For each glucose timestamp t, search source-modality events in
+        [t - half_gap, t + half_gap]. If any valid values are present,
+        use their mean; otherwise fill with fill_value.
+        """
+        glucose_item = self.patient_data.get(patient_id, {}).get("glucose")
+        source_item = self.patient_data.get(patient_id, {}).get(source_modality)
+        if glucose_item is None:
+            anchor_times = np.asarray([], dtype=np.int64)
+        else:
+            anchor_times = glucose_item["time_local"]
+            in_window = (anchor_times >= window_start_ns) & (anchor_times <= window_end_ns)
+            anchor_times = anchor_times[in_window].astype(np.int64)
+
+        if anchor_times.size > 1:
+            half_gap_ns = int(np.median(np.diff(np.sort(anchor_times)).astype(np.float64)) / 2.0)
+        elif self.anchor_sampling_minutes is not None:
+            half_gap_ns = int(float(self.anchor_sampling_minutes) * 60e9 / 2.0)
+        else:
+            half_gap_ns = int(2.5 * 60e9)
+        half_gap_ns = max(half_gap_ns, 0)
+
+        if source_item is None:
+            source_times = np.asarray([], dtype=np.int64)
+            source_values = np.asarray([], dtype=np.float32)
+        else:
+            source_indices = self._event_indices_in_window(
+                patient_id=patient_id,
+                modality=source_modality,
+                window_start_ns=window_start_ns,
+                window_end_ns=window_end_ns,
+            )
+            source_times = source_item["time_local"][source_indices].astype(np.int64)
+            source_values = source_item["value"][source_indices].astype(np.float32)
+            valid = np.isfinite(source_values)
+            source_times = source_times[valid]
+            source_values = source_values[valid]
+
+        aligned_values = np.full(anchor_times.shape[0], fill_value, dtype=np.float32)
+        aligned_mask = np.zeros(anchor_times.shape[0], dtype=np.float32)
+        for i, t in enumerate(anchor_times):
+            if source_times.size == 0:
+                continue
+            within = (source_times >= (t - half_gap_ns)) & (source_times <= (t + half_gap_ns))
+            if not np.any(within):
+                continue
+            aligned_values[i] = float(np.mean(source_values[within]))
+            aligned_mask[i] = 1.0
+
+        raw_length = int(anchor_times.shape[0])
+        if self.pad:
+            max_events = int(self.max_events_per_modality.get("glucose", self.window_size))
+            length = min(raw_length, max_events)
+            packed_values = torch.full((max_events, 1), float(fill_value), dtype=torch.float32)
+            packed_mask = torch.zeros(max_events, 1, dtype=torch.float32)
+            packed_times = torch.zeros(max_events, dtype=torch.long)
+            packed_relative_hours = torch.zeros(max_events, 1, dtype=torch.float32)
+            if length > 0:
+                packed_values[:length, 0] = torch.from_numpy(aligned_values[:length])
+                packed_mask[:length, 0] = torch.from_numpy(aligned_mask[:length])
+                at = anchor_times[:length]
+                packed_times[:length] = torch.from_numpy(at)
+                rel = (at.astype(np.float64) - float(window_start_ns)) / 3.6e12
+                packed_relative_hours[:length, 0] = torch.from_numpy(rel.astype(np.float32))
+        else:
+            length = raw_length
+            packed_values = torch.from_numpy(aligned_values).view(-1, 1)
+            packed_mask = torch.from_numpy(aligned_mask).view(-1, 1)
+            packed_times = torch.from_numpy(anchor_times).long()
+            rel = (anchor_times.astype(np.float64) - float(window_start_ns)) / 3.6e12
+            packed_relative_hours = torch.from_numpy(rel.astype(np.float32)).view(-1, 1)
+
+        return {
+            "values": packed_values,
+            "time_local": packed_times,
+            "relative_time_hours": packed_relative_hours,
+            "mask": packed_mask,
+            "length": torch.tensor(length, dtype=torch.long),
+            "raw_length": torch.tensor(raw_length, dtype=torch.long),
+            "present": torch.tensor(raw_length > 0),
+            "fill_value": torch.tensor(float(fill_value), dtype=torch.float32),
+        }
+
     def __len__(self) -> int:
         return len(self.window_index)
 
@@ -1065,6 +1157,38 @@ class AIREADIModalityImputationDataset(Dataset):
             modality: self._pack_modality(patient_id, modality, window_start_ns, window_end_ns)
             for modality in self.modalities
         }
+        if self.window_mode == "daily" and "glucose" in self.modalities and "calorie" in self.modalities:
+            modalities["calorie_aligned_to_glucose"] = self._pack_daily_modality_aligned_to_glucose(
+                patient_id=patient_id,
+                window_start_ns=window_start_ns,
+                window_end_ns=window_end_ns,
+                source_modality="calorie",
+                fill_value=0.0,
+            )
+        if self.window_mode == "daily" and "glucose" in self.modalities and "heart_rate" in self.modalities:
+            modalities["heart_rate_aligned_to_glucose"] = self._pack_daily_modality_aligned_to_glucose(
+                patient_id=patient_id,
+                window_start_ns=window_start_ns,
+                window_end_ns=window_end_ns,
+                source_modality="heart_rate",
+                fill_value=0.0,
+            )
+        if self.window_mode == "daily" and "glucose" in self.modalities and "respiratory_rate" in self.modalities:
+            modalities["respiratory_rate_aligned_to_glucose"] = self._pack_daily_modality_aligned_to_glucose(
+                patient_id=patient_id,
+                window_start_ns=window_start_ns,
+                window_end_ns=window_end_ns,
+                source_modality="respiratory_rate",
+                fill_value=0.0,
+            )
+        if self.window_mode == "daily" and "glucose" in self.modalities and "physical_activity" in self.modalities:
+            modalities["physical_activity_aligned_to_glucose"] = self._pack_daily_modality_aligned_to_glucose(
+                patient_id=patient_id,
+                window_start_ns=window_start_ns,
+                window_end_ns=window_end_ns,
+                source_modality="physical_activity",
+                fill_value=0.0,
+            )
         target = modalities[self.target_modality]["values"] if self.target_modality else torch.empty(0)
         condition_modalities = [m for m in self.modalities if m != self.target_modality]
 
