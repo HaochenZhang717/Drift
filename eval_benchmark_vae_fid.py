@@ -68,6 +68,9 @@ def sample_pair(real_ts: torch.Tensor, sampled_ts: torch.Tensor, n: int, seed: i
     if total == 0:
         raise ValueError("Empty tensors: cannot sample.")
 
+    if n < 0:
+        return real_ts[:total], sampled_ts[:total]
+
     n_use = min(n, total)
     g = torch.Generator(device="cpu")
     g.manual_seed(seed)
@@ -128,6 +131,8 @@ def main() -> None:
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--vae_ckpt_root", type=str, default=None)
     parser.add_argument("--vae_ckpt_name", type=str, default="best.pt")
+    parser.add_argument("--single_dataset_name", type=str, default=None)
+    parser.add_argument("--single_run_dir", type=str, default=None)
 
     parser.add_argument(
         "--ettm2_dir",
@@ -158,12 +163,21 @@ def main() -> None:
     else:
         device = torch.device(args.device)
 
-    dataset_to_dir = {
-        "ETTm2": Path(args.ettm2_dir),
-        "ETTh2": Path(args.etth2_dir),
-        "Weather": Path(args.weather_dir),
-        "AirQuality": Path(args.airquality_dir),
-    }
+    if args.single_dataset_name is not None or args.single_run_dir is not None:
+        if not args.single_dataset_name or not args.single_run_dir:
+            raise ValueError(
+                "When using single-dataset mode, both --single_dataset_name and --single_run_dir are required."
+            )
+        dataset_to_dir = {
+            args.single_dataset_name: Path(args.single_run_dir),
+        }
+    else:
+        dataset_to_dir = {
+            "ETTm2": Path(args.ettm2_dir),
+            "ETTh2": Path(args.etth2_dir),
+            "Weather": Path(args.weather_dir),
+            "AirQuality": Path(args.airquality_dir),
+        }
 
     print(f"device={device}")
     print(f"num_samples={args.num_samples}, num_repeats={args.num_repeats}, seed={args.seed}")
