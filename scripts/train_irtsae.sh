@@ -40,7 +40,7 @@ export NCCL_DEBUG=INFO
 
 
 PARTICIPANTS_TSV="/playpen-shared/mshuang/morris/morris/d9ef6cf1-f6c3-4956-a91e-adf409e105f0/dataset/participants.tsv"
-DATA_ROOT="/playpen-shared/haochenz/AI-READI-Dataset/AI-READI-processed/AI-READI-processed"
+DATA_ROOT="/playpen-shared/haochenz/AI-READI-Dataset/AI-READI-processed"
 TRAIN_MODALITY=${1:-heart_rate}
 
 python train_irregular_ts_ae.py \
