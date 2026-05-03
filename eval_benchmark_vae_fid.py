@@ -19,11 +19,20 @@ def find_all_eval_pts(run_dir: Path) -> list[Path]:
     return files
 
 
+def tensor_stats(x: torch.Tensor) -> Dict[str, float]:
+    return {
+        "min": float(x.min().item()),
+        "max": float(x.max().item()),
+        "mean": float(x.mean().item()),
+        "std": float(x.std(unbiased=False).item()),
+    }
+
+
 def normalize_to_minus1_1_by_real(
     real_ts: torch.Tensor,
     sampled_ts: torch.Tensor,
     fit_real_ts: torch.Tensor,
-) -> Tuple[torch.Tensor, torch.Tensor]:
+) -> Tuple[torch.Tensor, torch.Tensor, Dict[str, float]]:
     if real_ts.ndim != 3 or sampled_ts.ndim != 3:
         raise ValueError(f"Expected (N, T, C), got real={tuple(real_ts.shape)}, sampled={tuple(sampled_ts.shape)}")
 
@@ -35,11 +44,23 @@ def normalize_to_minus1_1_by_real(
     real_max = fit_real_ts.amax(dim=(0, 1), keepdim=True)
     denom = (real_max - real_min).clamp_min(1e-6)
 
-    real_norm = torch.clamp((real_ts - real_min) / denom, 0.0, 1.0)
-    sampled_norm = torch.clamp((sampled_ts - real_min) / denom, 0.0, 1.0)
+    real_u = (real_ts - real_min) / denom
+    sampled_u = (sampled_ts - real_min) / denom
+    real_norm = torch.clamp(real_u, 0.0, 1.0)
+    sampled_norm = torch.clamp(sampled_u, 0.0, 1.0)
     real_norm = real_norm * 2.0 - 1.0
     sampled_norm = sampled_norm * 2.0 - 1.0
-    return real_norm, sampled_norm
+    debug = {
+        "fit_real_min": float(real_min.min().item()),
+        "fit_real_max": float(real_max.max().item()),
+        "fit_range_min": float((real_max - real_min).min().item()),
+        "fit_range_max": float((real_max - real_min).max().item()),
+        "real_u_lt0_ratio": float((real_u < 0.0).to(torch.float32).mean().item()),
+        "real_u_gt1_ratio": float((real_u > 1.0).to(torch.float32).mean().item()),
+        "sampled_u_lt0_ratio": float((sampled_u < 0.0).to(torch.float32).mean().item()),
+        "sampled_u_gt1_ratio": float((sampled_u > 1.0).to(torch.float32).mean().item()),
+    }
+    return real_norm, sampled_norm, debug
 
 
 def sample_pair(real_ts: torch.Tensor, sampled_ts: torch.Tensor, n: int, seed: int) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -62,6 +83,7 @@ def evaluate_one(
     seed: int,
     vae_ckpt_root: str,
     vae_ckpt_name: str,
+    print_stats: bool = False,
 ) -> Dict[str, float]:
     payload = torch.load(pt_path, map_location="cpu")
 
@@ -69,9 +91,17 @@ def evaluate_one(
     sampled_ts = payload["sampled_ts"].to(torch.float32)
 
     real_sub, sampled_sub = sample_pair(real_ts, sampled_ts, n=num_samples, seed=seed)
-    real_norm, sampled_norm = normalize_to_minus1_1_by_real(
+    real_norm, sampled_norm, norm_debug = normalize_to_minus1_1_by_real(
         real_sub, sampled_sub, fit_real_ts=real_ts
     )
+
+    if print_stats:
+        print(f"[stats] file={pt_path.name}, seed={seed}")
+        print(f"[stats] raw_real     {tensor_stats(real_sub)}")
+        print(f"[stats] raw_sampled  {tensor_stats(sampled_sub)}")
+        print(f"[stats] norm_real    {tensor_stats(real_norm)}")
+        print(f"[stats] norm_sampled {tensor_stats(sampled_norm)}")
+        print(f"[stats] norm_debug   {norm_debug}")
 
     fid = VAE_FID(
         ori_data=real_norm,
@@ -94,6 +124,7 @@ def main() -> None:
     parser.add_argument("--num_samples", type=int, default=2000)
     parser.add_argument("--num_repeats", type=int, default=10)
     parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument("--print_stats", action="store_true")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--vae_ckpt_root", type=str, default=None)
     parser.add_argument("--vae_ckpt_name", type=str, default="best.pt")
@@ -154,6 +185,7 @@ def main() -> None:
                     seed=args.seed + repeat_idx,
                     vae_ckpt_root=args.vae_ckpt_root,
                     vae_ckpt_name=args.vae_ckpt_name,
+                    print_stats=args.print_stats,
                 )
                 repeat_fids.append(result["fid"])
 
