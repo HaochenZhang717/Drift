@@ -228,8 +228,8 @@ def VAE_FID(
         latent_dim=hp["latent_dim"],
     ).to(device).eval()
     model = _load_model_state(model, state_dict)
-    print("real_tensor size:", real_tensor.shape)
-    print("fake_tensor size:", fake_tensor.shape)
+    # print("real_tensor size:", real_tensor.shape)
+    # print("fake_tensor size:", fake_tensor.shape)
     real_embeddings = _extract_embeddings(model, real_tensor, device=device, batch_size=batch_size)
     fake_embeddings = _extract_embeddings(model, fake_tensor, device=device, batch_size=batch_size)
     fake_embeddings = fake_embeddings[: real_embeddings.shape[0]]
