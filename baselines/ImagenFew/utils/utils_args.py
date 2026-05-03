@@ -84,7 +84,8 @@ def parse_args_uncond():
 
     # --- logging ---
     parser.add_argument('--logging_iter', type=int, help='number of iterations between logging')
-    parser.add_argument('--eval_metrics', type=str, default=["disc", "contextFID", "pred"], choices=["disc", "contextFID", "pred"], help='Evaluate metrics to compute', nargs='+')
+    # parser.add_argument('--eval_metrics', type=str, default=["disc", "contextFID", "pred"], choices=["disc", "contextFID", "pred"], help='Evaluate metrics to compute', nargs='+')
+    parser.add_argument('--eval_metrics', type=str, default=["disc"], choices=["disc", "contextFID", "pred"], help='Evaluate metrics to compute', nargs='+')
 
         # -- KoVAE ---
     parser.add_argument('--num_steps', type=int, default=1)
