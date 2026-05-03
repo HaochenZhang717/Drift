@@ -137,22 +137,22 @@ def main() -> None:
     parser.add_argument(
         "--ettm2_dir",
         type=str,
-        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/ETTm2/c51e88cc-807e-44f5-9570-e0ba34934f03",
+        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/ETTm2/a5de4592-8dfc-4a51-a381-67dfa769606c",
     )
     parser.add_argument(
         "--etth2_dir",
         type=str,
-        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/ETTh2/39d8773e-f43b-464f-b15f-4728bb590971",
+        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/ETTh2/69ab4190-6534-48e8-94b2-ea4615543e9a",
     )
     parser.add_argument(
         "--weather_dir",
         type=str,
-        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/Weather/c3412176-555b-430d-8f86-6972c8348b28",
+        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/Weather/eedd9e3e-bbd5-4cb7-9ec9-c699efcb35a5",
     )
     parser.add_argument(
         "--airquality_dir",
         type=str,
-        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/AirQuality/a02ed1a0-5603-495e-8306-5d5dc0f661bc",
+        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/AirQuality/5f6d7eae-3d45-44af-b713-070e3d245835",
     )
 
     args = parser.parse_args()
