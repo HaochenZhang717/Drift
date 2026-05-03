@@ -18,17 +18,16 @@ from data_provider.combined_datasets import dataset_list
 from importlib import import_module
 
 
-def _save_eval_samples(args, dataset_name, epoch, eval_split, real_set, generated_set):
+def _save_eval_samples(args, dataset_name, epoch, real_set, generated_set):
     samples_dir = os.path.join(os.path.dirname(args.log_dir), "eval_samples")
     os.makedirs(samples_dir, exist_ok=True)
     sample_path = os.path.join(
         samples_dir,
-        f"{dataset_name}_{eval_split}_epoch_{epoch:04d}.pt",
+        f"{dataset_name}_epoch_{epoch:04d}.pt",
     )
     payload = {
         "dataset": dataset_name,
         "epoch": int(epoch),
-        "eval_split": eval_split,
         "real_ts": real_set.detach().cpu().float(),
         "sampled_ts": generated_set.detach().cpu().float(),
     }
@@ -100,7 +99,6 @@ def main(args):
                             args,
                             dataset,
                             epoch,
-                            eval_split,
                             _extract_real_tensor(testset),
                             generated_set,
                         )
