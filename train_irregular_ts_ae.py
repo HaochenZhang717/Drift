@@ -129,6 +129,7 @@ def make_random_input_mask(
 
         perm = torch.randperm(n_obs, device=observed_mask.device)[:n_drop]
         chosen = observed_pos[perm]
+
         input_mask[b, chosen[:, 0], chosen[:, 1]] = 1.0
 
     return input_mask
@@ -291,7 +292,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--data_root", type=str, required=True)
     parser.add_argument("--participants_tsv_path", type=str, default=None)
     parser.add_argument("--train_split", type=str, default="train", choices=["train", "test"])
-    parser.add_argument("--val_split", type=str, default="test", choices=["train", "test"])
+    parser.add_argument("--val_split", type=str, default="test", choices=["train", "valid", "test"])
 
     parser.add_argument("--train_modality", type=str, required=True, choices=list(AIREADI_MODALITY_SPECS.keys()))
     parser.add_argument("--use_aligned_modality", action="store_true")
@@ -365,6 +366,9 @@ def main() -> None:
         modality_key=modality_key,
         max_missing_ratio=args.max_missing_ratio,
     )
+
+    print(f"training set size: {len(train_data)}")
+    print(f"validation set size: {len(val_data)}")
 
     train_loader = DataLoader(
         train_data,

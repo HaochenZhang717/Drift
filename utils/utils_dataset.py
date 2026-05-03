@@ -360,6 +360,9 @@ def _series_from_row_for_modality(
     else:
         values = pd.to_numeric(pd.Series(values_raw), errors="coerce").to_numpy(dtype=np.float32)
         valid_value = np.isfinite(values)
+        if spec.file_prefix == "respiratory_rate":
+            # In processed AI-READI respiratory_rate, -1 and -2 are invalid sentinels.
+            valid_value &= ~(np.isclose(values, -1.0) | np.isclose(values, -2.0))
 
     valid = valid_time & valid_value
     if not valid.any():

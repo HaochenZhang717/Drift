@@ -72,7 +72,7 @@ class IrregularTimeSeriesAE(nn.Module):
             input_mask = input_mask.float()
         visible_input_mask = observed_mask * (1.0 - input_mask)
         x_masked = x * visible_input_mask
-
+        breakpoint()
         observation_time_valid = (observed_mask > 0).any(dim=-1)  # (B, T), bool
         observation_time_valid_ids = observation_time_valid.long()
         input_time_mask_ids = (input_mask > 0).any(dim=-1).long()  # 1 means additionally masked
