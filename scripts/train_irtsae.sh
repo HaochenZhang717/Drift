@@ -64,15 +64,15 @@ python train_irregular_ts_ae.py \
   --nhead 4 \
   --num_layers 3 \
   \
-  --batch_size 64 \
-  --epochs 500 \
+  --batch_size 256 \
+  --epochs 1000 \
   --lr 3e-4 \
   --input_random_drop_prob 0.3 \
   \
   --num_workers 1 \
   --seed 0 \
   \
-  --save_dir "./outputs/irregular_ts_ae/heart_rate" \
+  --save_dir "./outputs/irregular_ts_ae/${TRAIN_MODALITY}" \
   --save_name "best.pt" \
   \
   --wandb_project irregular-ts-ae \

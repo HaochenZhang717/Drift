@@ -197,6 +197,11 @@ def save_reconstruction_plots(
     # 1) Reconstruction with extra input masking (training-like setting)
     input_mask_with = make_random_input_mask(observed_mask, input_random_drop_prob)
     pred_with_mask = model(x, observed_mask=observed_mask, input_mask=input_mask_with)
+    # For visualization as an imputed series:
+    # keep original values only where data is observed and not additionally masked;
+    # use model predictions for additionally masked positions and dataset-missing positions.
+    keep_original_mask = observed_mask * (1.0 - input_mask_with)
+    recon_with_imputed = pred_with_mask * (1.0 - keep_original_mask) + x * keep_original_mask
     # 2) Reconstruction without extra input masking (regularization view)
     input_mask_without = torch.zeros_like(observed_mask)
     pred_without_mask = model(x, observed_mask=observed_mask, input_mask=input_mask_without)
@@ -204,7 +209,7 @@ def save_reconstruction_plots(
     bsz = min(num_samples, x.size(0))
     for i in range(bsz):
         real = x[i].detach().cpu().numpy()[:, 0]
-        recon_with = pred_with_mask[i].detach().cpu().numpy()[:, 0]
+        recon_with = recon_with_imputed[i].detach().cpu().numpy()[:, 0]
         recon_without = pred_without_mask[i].detach().cpu().numpy()[:, 0]
         obs = observed_mask[i].detach().cpu().numpy()[:, 0] > 0
         t = np.arange(real.shape[0])
@@ -323,7 +328,7 @@ def get_args() -> argparse.Namespace:
 
     parser.add_argument("--save_dir", type=str, default="./outputs/irregular_ts_ae")
     parser.add_argument("--save_name", type=str, default="best.pt")
-    parser.add_argument("--plot_every_epochs", type=int, default=10)
+    parser.add_argument("--plot_every_epochs", type=int, default=100)
     parser.add_argument("--plot_num_samples", type=int, default=4)
 
     parser.add_argument("--wandb_project", type=str, default="irregular-ts-ae")
