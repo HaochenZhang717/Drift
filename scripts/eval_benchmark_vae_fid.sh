@@ -7,5 +7,5 @@ python "${ROOT_DIR}/eval_benchmark_vae_fid.py" \
   --num_samples 2000 \
   --seed 2026 \
   --device cuda \
-  --vae_ckpt_root /playpen-shared/haochenz/ImagenFew/fid_vae_ckpts \
+  --vae_ckpt_root /playpen-shared/haochenz/Drift/fid_vae_ckpts/benchmark_256 \
   "$@"
