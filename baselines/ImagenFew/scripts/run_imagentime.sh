@@ -41,6 +41,6 @@ export NCCL_DEBUG=INFO
 
 CONFIG_FILE=${1:-/playpen-shared/haochenz/Drift/baselines/ImagenFew/configs/ImagenTime256/AirQuality.yaml}
 
-python run.py \
+python /playpen-shared/haochenz/Drift/baselines/ImagenFew/run.py \
 --subset_p 1.0 \
 --config ${CONFIG_FILE}
