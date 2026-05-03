@@ -33,9 +33,10 @@ class IrregularTimeSeriesAE(nn.Module):
         super().__init__()
         self.input_proj = nn.Linear(input_dim, d_model)
         self.pos_enc = PositionalEncoding(d_model, max_len=max_len)
-        # Two binary embeddings (0/1), one for observation mask and one for input mask.
-        self.observation_mask_embed = nn.Embedding(2, d_model)
-        self.input_mask_embed = nn.Embedding(2, d_model)
+        # A shared learnable token used for both:
+        # 1) dataset-missing/padding positions from observed_mask
+        # 2) additionally masked positions from input_mask
+        self.special_token = nn.Parameter(torch.zeros(1, 1, d_model))
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -70,20 +71,19 @@ class IrregularTimeSeriesAE(nn.Module):
             input_mask = torch.zeros_like(observed_mask)
         else:
             input_mask = input_mask.float()
-        visible_input_mask = observed_mask * (1.0 - input_mask)
-        x_masked = x * visible_input_mask
-        observation_time_valid = (observed_mask > 0).any(dim=-1)  # (B, T), bool
-        observation_time_valid_ids = observation_time_valid.long()
-        input_time_mask_ids = (input_mask > 0).any(dim=-1).long()  # 1 means additionally masked
-        # Padding should still be decided by dataset observation availability.
-        key_padding_mask = ~observation_time_valid  # (B, T), True => ignore
 
-        h = self.input_proj(x_masked)
-        h = (
-            self.pos_enc(h)
-            + self.observation_mask_embed(observation_time_valid_ids)
-            + self.input_mask_embed(input_time_mask_ids)
-        )
-        h = self.encoder(h, src_key_padding_mask=key_padding_mask)
+        # Time-step level mask:
+        # - observed_mask==0 at a time step (dataset missing/padding)
+        # - input_mask==1 at a time step (additional masking)
+        observation_time_missing = ~(observed_mask > 0).any(dim=-1)  # (B, T), bool
+        input_time_masked = (input_mask > 0).any(dim=-1)  # (B, T), bool
+        special_token_mask = observation_time_missing | input_time_masked
+
+        h = self.input_proj(x)  # (B, T, D)
+        special = self.special_token.expand(h.size(0), h.size(1), -1)
+        h = torch.where(special_token_mask.unsqueeze(-1), special, h)
+        h = self.pos_enc(h)
+        # No attention mask: all positions attend, including special-token positions.
+        h = self.encoder(h)
         out = self.decoder(h)
         return out
