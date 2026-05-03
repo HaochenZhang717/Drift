@@ -8,9 +8,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, List, Tuple
 
+import matplotlib
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
-import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
@@ -36,7 +38,7 @@ def set_seed(seed: int) -> None:
 @dataclass
 class CachedSample:
     x: torch.Tensor  # (T, C)
-    mask: torch.Tensor  # (T, C)
+    observed_mask: torch.Tensor  # (T, C)
 
 
 class IrregularTSDataContainer(Dataset):
@@ -64,18 +66,18 @@ class IrregularTSDataContainer(Dataset):
                 continue
 
             x = modality_pack["values"].float()
-            mask = modality_pack["mask"].float()
-            if x.ndim != 2 or mask.ndim != 2:
+            observed_mask = modality_pack["mask"].float()
+            if x.ndim != 2 or observed_mask.ndim != 2:
                 continue
-            if x.shape != mask.shape:
+            if x.shape != observed_mask.shape:
                 continue
 
-            valid_ratio = float(mask.mean().item()) if mask.numel() > 0 else 0.0
+            valid_ratio = float(observed_mask.mean().item()) if observed_mask.numel() > 0 else 0.0
             missing_ratio = 1.0 - valid_ratio
             if missing_ratio > max_missing_ratio:
                 continue
 
-            self.samples.append(CachedSample(x=x, mask=mask))
+            self.samples.append(CachedSample(x=x, observed_mask=observed_mask))
 
         self.total_kept = len(self.samples)
         if self.total_kept == 0:
@@ -89,14 +91,47 @@ class IrregularTSDataContainer(Dataset):
 
     def __getitem__(self, idx: int) -> Tuple[torch.Tensor, torch.Tensor]:
         s = self.samples[idx]
-        return s.x, s.mask
+        return s.x, s.observed_mask
 
 
-def masked_mse_loss(pred: torch.Tensor, target: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-    # Sum over all valid positions then divide by number of valid positions.
-    sq_err = (pred - target).pow(2) * mask
-    denom = mask.sum().clamp_min(1.0)
+def masked_mse_loss(pred: torch.Tensor, target: torch.Tensor, loss_mask: torch.Tensor) -> torch.Tensor:
+    # Sum over all selected positions then divide by number of selected positions.
+    sq_err = (pred - target).pow(2) * loss_mask
+    denom = loss_mask.sum().clamp_min(1.0)
     return sq_err.sum() / denom
+
+
+def make_random_input_mask(
+    observed_mask: torch.Tensor,
+    random_drop_prob: float,
+) -> torch.Tensor:
+    """Create extra training mask only on observed positions.
+
+    Returns input_mask where:
+      - 1 indicates "additionally masked for model input"
+      - 0 indicates "not additionally masked"
+    """
+    input_mask = torch.zeros_like(observed_mask)
+    if random_drop_prob <= 0.0:
+        return input_mask
+
+    bsz = observed_mask.size(0)
+    for b in range(bsz):
+        observed_pos = torch.nonzero(observed_mask[b] > 0, as_tuple=False)  # (N_obs, 2) for (T, C)
+        n_obs = int(observed_pos.size(0))
+        if n_obs == 0:
+            continue
+
+        n_drop = int(round(float(random_drop_prob) * n_obs))
+        n_drop = max(0, min(n_drop, n_obs))
+        if n_drop == 0:
+            continue
+
+        perm = torch.randperm(n_obs, device=observed_mask.device)[:n_drop]
+        chosen = observed_pos[perm]
+        input_mask[b, chosen[:, 0], chosen[:, 1]] = 1.0
+
+    return input_mask
 
 
 def run_epoch(
@@ -104,6 +139,7 @@ def run_epoch(
     loader: DataLoader,
     device: torch.device,
     optimizer: torch.optim.Optimizer | None,
+    input_random_drop_prob: float,
 ) -> Dict[str, float]:
     is_train = optimizer is not None
     model.train(is_train)
@@ -112,27 +148,101 @@ def run_epoch(
     total_valid = 0.0
 
     iterator = tqdm(loader, desc="train" if is_train else "val", leave=False)
-    for x, mask in iterator:
+    for x, observed_mask in iterator:
         x = x.to(device)
-        mask = mask.to(device)
+        observed_mask = observed_mask.to(device)
+        input_mask = make_random_input_mask(observed_mask, input_random_drop_prob)
 
         if is_train:
             optimizer.zero_grad(set_to_none=True)
 
-        pred = model(x, mask)
-        loss = masked_mse_loss(pred, x, mask)
+        pred = model(x, observed_mask=observed_mask, input_mask=input_mask)
+        loss = masked_mse_loss(pred, x, input_mask)
 
         if is_train:
             loss.backward()
             optimizer.step()
 
         with torch.no_grad():
-            batch_valid = float(mask.sum().item())
+            batch_valid = float(input_mask.sum().item())
             total_loss += float(loss.item()) * batch_valid
             total_valid += batch_valid
 
     mean_loss = total_loss / max(total_valid, 1.0)
     return {"loss": mean_loss}
+
+
+@torch.no_grad()
+def save_reconstruction_plots(
+    model: torch.nn.Module,
+    loader: DataLoader,
+    device: torch.device,
+    epoch: int,
+    out_dir: Path,
+    num_samples: int = 4,
+    input_random_drop_prob: float = 0.0,
+) -> List[str]:
+    model.eval()
+    out_dir.mkdir(parents=True, exist_ok=True)
+    saved_paths: List[str] = []
+
+    try:
+        x, observed_mask = next(iter(loader))
+    except StopIteration:
+        return saved_paths
+
+    x = x.to(device)
+    observed_mask = observed_mask.to(device)
+    # 1) Reconstruction with extra input masking (training-like setting)
+    input_mask_with = make_random_input_mask(observed_mask, input_random_drop_prob)
+    pred_with_mask = model(x, observed_mask=observed_mask, input_mask=input_mask_with)
+    # 2) Reconstruction without extra input masking (regularization view)
+    input_mask_without = torch.zeros_like(observed_mask)
+    pred_without_mask = model(x, observed_mask=observed_mask, input_mask=input_mask_without)
+
+    bsz = min(num_samples, x.size(0))
+    for i in range(bsz):
+        real = x[i].detach().cpu().numpy()[:, 0]
+        recon_with = pred_with_mask[i].detach().cpu().numpy()[:, 0]
+        recon_without = pred_without_mask[i].detach().cpu().numpy()[:, 0]
+        obs = observed_mask[i].detach().cpu().numpy()[:, 0] > 0
+        t = np.arange(real.shape[0])
+
+        # with input_mask
+        fig, ax = plt.subplots(figsize=(10, 4.2))
+        ax.plot(t, real, label="real", linewidth=1.2)
+        ax.plot(t, recon_with, label="recon_with_input_mask", linewidth=1.2, alpha=0.9)
+        if np.any(obs):
+            ax.scatter(t[~obs], real[~obs], s=12, marker="x", label="missing_in_dataset")
+        ax.set_title(f"Reconstruction (with_input_mask) | epoch={epoch} | sample={i}")
+        ax.set_xlabel("Time Index")
+        ax.set_ylabel("Value")
+        ax.grid(True, alpha=0.25)
+        ax.legend(loc="best")
+        fig.tight_layout()
+        out_path_with = out_dir / f"epoch_{epoch:04d}_sample_{i}_with_input_mask.png"
+        fig.savefig(out_path_with, dpi=150)
+        plt.close(fig)
+        saved_paths.append(str(out_path_with))
+
+        # without input_mask
+        fig, ax = plt.subplots(figsize=(10, 4.2))
+        ax.plot(t, real, label="real", linewidth=1.2)
+        ax.plot(t, recon_without, label="recon_without_input_mask", linewidth=1.2, alpha=0.9)
+        if np.any(obs):
+            ax.scatter(t[~obs], real[~obs], s=12, marker="x", label="missing_in_dataset")
+        ax.set_title(f"Reconstruction (without_input_mask) | epoch={epoch} | sample={i}")
+        ax.set_xlabel("Time Index")
+        ax.set_ylabel("Value")
+        ax.grid(True, alpha=0.25)
+        ax.legend(loc="best")
+        fig.tight_layout()
+        out_path_without = out_dir / f"epoch_{epoch:04d}_sample_{i}_without_input_mask.png"
+        fig.savefig(out_path_without, dpi=150)
+        plt.close(fig)
+        saved_paths.append(str(out_path_without))
+
+    return saved_paths
 
 
 def build_base_dataset(args: argparse.Namespace, split: str, modalities: List[str]) -> AIREADIModalityImputationDataset:
@@ -204,6 +314,7 @@ def get_args() -> argparse.Namespace:
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--lr", type=float, default=1e-3)
     parser.add_argument("--weight_decay", type=float, default=1e-4)
+    parser.add_argument("--input_random_drop_prob", type=float, default=0.1)
 
     parser.add_argument("--num_workers", type=int, default=0)
     parser.add_argument("--seed", type=int, default=42)
@@ -211,6 +322,8 @@ def get_args() -> argparse.Namespace:
 
     parser.add_argument("--save_dir", type=str, default="./outputs/irregular_ts_ae")
     parser.add_argument("--save_name", type=str, default="best.pt")
+    parser.add_argument("--plot_every_epochs", type=int, default=10)
+    parser.add_argument("--plot_num_samples", type=int, default=4)
 
     parser.add_argument("--wandb_project", type=str, default="irregular-ts-ae")
     parser.add_argument("--wandb_entity", type=str, default=None)
@@ -294,9 +407,15 @@ def main() -> None:
     best_path = str(Path(args.save_dir) / args.save_name)
 
     for epoch in range(1, args.epochs + 1):
-        train_metrics = run_epoch(model, train_loader, device, optimizer)
+        train_metrics = run_epoch(
+            model, train_loader, device, optimizer,
+            input_random_drop_prob=args.input_random_drop_prob
+        )
         with torch.no_grad():
-            val_metrics = run_epoch(model, val_loader, device, optimizer=None)
+            val_metrics = run_epoch(
+                model, val_loader, device, optimizer=None,
+                input_random_drop_prob=args.input_random_drop_prob
+            )
 
         log_data = {
             "epoch": epoch,
@@ -309,6 +428,20 @@ def main() -> None:
         }
         if wandb is not None:
             wandb.log(log_data)
+
+        if args.plot_every_epochs > 0 and (epoch % args.plot_every_epochs == 0):
+            plot_dir = Path(args.save_dir) / "recon_plots"
+            saved = save_reconstruction_plots(
+                model=model,
+                loader=val_loader,
+                device=device,
+                epoch=epoch,
+                out_dir=plot_dir,
+                num_samples=args.plot_num_samples,
+                input_random_drop_prob=args.input_random_drop_prob,
+            )
+            if wandb is not None and saved:
+                wandb.log({"recon/examples": [wandb.Image(p) for p in saved], "epoch": epoch})
 
         print(
             f"Epoch {epoch:03d} | train_loss={train_metrics['loss']:.6f} | "
@@ -339,3 +472,33 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+    class example_model(nn.Module):
+        def __init__(self,):
+            super().__init__()
+            # (n, 120, 1) -> (n, 1, 64)
+            # (n, 1, 120) -> (n, 64, 1)
+            # 64 dimensional
+            self.baseline_weight_proj = nn.Sequential(
+                nn.Conv1d(1, 16, ),
+                nn.
+
+                nn.Mean(dim=-1)
+            )
+
+            self.q_proj()
+            self.k_proj()
+
+
+
+        def forward(self, x):
+            '''
+            :param past_week_history: (B, num_days, 96)
+            :return: (B, 1, 96)
+            '''
+            baseline = 0.7 * one_day_ago + 0.3 * one_week_ago
+            baseline = self.baseline_weight_proj(baseline) * baseline
+
+            historry*(q@k.transpose()/sqrt(d))

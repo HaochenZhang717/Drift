@@ -1,10 +1,11 @@
 python train_irregular_ts_ae.py \
   --data_root /Users/zhc/Downloads/AI-READI-processed \
   --participants_tsv_path /Users/zhc/Downloads/AI-READI/participants.tsv \
-  --train_modality heart_rate \
+  --train_modality "heart_rate" \
   --use_aligned_modality \
   --train_split train \
   --val_split valid \
+  \
   --anchor_modality "glucose" \
   --ts_seq_len 288 \
   --daily_min_events 288 \
@@ -21,6 +22,7 @@ python train_irregular_ts_ae.py \
   --batch_size 64 \
   --epochs 50 \
   --lr 1e-3 \
+  --input_random_drop_prob 0.5 \
   \
   --num_workers 1 \
   -seed 0 \

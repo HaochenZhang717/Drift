@@ -1,6 +1,5 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 # =========================
@@ -34,7 +33,9 @@ class IrregularTimeSeriesAE(nn.Module):
         super().__init__()
         self.input_proj = nn.Linear(input_dim, d_model)
         self.pos_enc = PositionalEncoding(d_model, max_len=max_len)
-        self.mask_embed = nn.Embedding(2, d_model)
+        # Two binary embeddings (0/1), one for observation mask and one for input mask.
+        self.observation_mask_embed = nn.Embedding(2, d_model)
+        self.input_mask_embed = nn.Embedding(2, d_model)
 
         encoder_layer = nn.TransformerEncoderLayer(
             d_model=d_model,
@@ -44,29 +45,46 @@ class IrregularTimeSeriesAE(nn.Module):
         self.encoder = nn.TransformerEncoder(encoder_layer, num_layers)
         self.decoder = nn.Linear(d_model, input_dim)
 
-    def forward(self, x, mask):
+    def forward(self, x, observed_mask, input_mask=None):
         """
         x: (B, T, C)
-        mask: (B, T, C), 1=valid, 0=padding/missing
+        observed_mask: (B, T, C), 1=observed(real), 0=missing/padding in dataset
+        input_mask: (B, T, C), optional extra training mask marker:
+            1 means this observed value is additionally masked for model input.
+            0 means not additionally masked.
         """
         if x.dim() != 3:
             raise ValueError(f"x must be (B, T, C), got {tuple(x.shape)}")
-        if mask.dim() != 3:
-            raise ValueError(f"mask must be (B, T, C), got {tuple(mask.shape)}")
-        if x.shape != mask.shape:
-            raise ValueError(f"x and mask must share shape, got {tuple(x.shape)} vs {tuple(mask.shape)}")
+        if observed_mask.dim() != 3:
+            raise ValueError(f"observed_mask must be (B, T, C), got {tuple(observed_mask.shape)}")
+        if x.shape != observed_mask.shape:
+            raise ValueError(
+                f"x and observed_mask must share shape, got {tuple(x.shape)} vs {tuple(observed_mask.shape)}"
+            )
+        if input_mask is not None and input_mask.shape != x.shape:
+            raise ValueError(f"input_mask must match x shape, got {tuple(input_mask.shape)} vs {tuple(x.shape)}")
 
         x = x.float()
-        mask = mask.float()
-        x_masked = x * mask
+        observed_mask = observed_mask.float()
+        if input_mask is None:
+            input_mask = torch.zeros_like(observed_mask)
+        else:
+            input_mask = input_mask.float()
+        visible_input_mask = observed_mask * (1.0 - input_mask)
+        x_masked = x * visible_input_mask
 
-        # Valid timestamp if any channel is observed at that time.
-        time_valid = (mask > 0).any(dim=-1)      # (B, T), bool
-        time_valid_ids = time_valid.long()       # (B, T), in {0, 1}
-        key_padding_mask = ~time_valid           # (B, T), True => ignore
+        observation_time_valid = (observed_mask > 0).any(dim=-1)  # (B, T), bool
+        observation_time_valid_ids = observation_time_valid.long()
+        input_time_mask_ids = (input_mask > 0).any(dim=-1).long()  # 1 means additionally masked
+        # Padding should still be decided by dataset observation availability.
+        key_padding_mask = ~observation_time_valid  # (B, T), True => ignore
 
         h = self.input_proj(x_masked)
-        h = self.pos_enc(h) + self.mask_embed(time_valid_ids)
+        h = (
+            self.pos_enc(h)
+            + self.observation_mask_embed(observation_time_valid_ids)
+            + self.input_mask_embed(input_time_mask_ids)
+        )
         h = self.encoder(h, src_key_padding_mask=key_padding_mask)
         out = self.decoder(h)
         return out
