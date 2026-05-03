@@ -101,15 +101,15 @@ def evaluate_one(
     real_norm = real_sub
     sampled_norm = sampled_sub
 
-    if print_stats:
-        print(f"[stats] file={pt_path.name}, seed={seed}")
-        print(f"[stats] real data      {tensor_stats(real_norm)}")
-        print(f"[stats] generated data {tensor_stats(sampled_norm)}")
-        # print(f"[stats] raw_real     {tensor_stats(real_sub)}")
-        # print(f"[stats] raw_sampled  {tensor_stats(sampled_sub)}")
-        # print(f"[stats] norm_real    {tensor_stats(real_norm)}")
-        # print(f"[stats] norm_sampled {tensor_stats(sampled_norm)}")
-        # print(f"[stats] norm_debug   {norm_debug}")
+    # if print_stats:
+    print(f"[stats] file={pt_path.name}, seed={seed}")
+    print(f"[stats] real data      {tensor_stats(real_norm)}")
+    print(f"[stats] generated data {tensor_stats(sampled_norm)}")
+    # print(f"[stats] raw_real     {tensor_stats(real_sub)}")
+    # print(f"[stats] raw_sampled  {tensor_stats(sampled_sub)}")
+    # print(f"[stats] norm_real    {tensor_stats(real_norm)}")
+    # print(f"[stats] norm_sampled {tensor_stats(sampled_norm)}")
+    # print(f"[stats] norm_debug   {norm_debug}")
 
     fid = VAE_FID(
         ori_data=real_norm,
