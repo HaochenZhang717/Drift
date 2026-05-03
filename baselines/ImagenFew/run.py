@@ -43,6 +43,7 @@ def _save_eval_samples(args, dataset_name, epoch, real_set, generated_set):
         "sampled_ts": generated_set.detach().cpu().float(),
     }
     torch.save(payload, sample_path)
+    print("Saved samples to {}".format(sample_path))
 
 
 def main(args):
