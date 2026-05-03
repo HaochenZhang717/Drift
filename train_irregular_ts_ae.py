@@ -444,8 +444,8 @@ def main() -> None:
                 num_samples=args.plot_num_samples,
                 input_random_drop_prob=args.input_random_drop_prob,
             )
-            if wandb is not None and saved:
-                wandb.log({"recon/examples": [wandb.Image(p) for p in saved], "epoch": epoch})
+            # if wandb is not None and saved:
+            #     wandb.log({"recon/examples": [wandb.Image(p) for p in saved], "epoch": epoch})
 
         print(
             f"Epoch {epoch:03d} | train_loss={train_metrics['loss']:.6f} | "
