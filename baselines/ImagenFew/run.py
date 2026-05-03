@@ -97,8 +97,8 @@ def main(args):
             handler.train_iter(dataset_loader, logger)
 
             # --- evaluation loop ---
-            # if epoch % args.logging_iter == 0:
-            if epoch % 1 == 0:
+            if epoch % args.logging_iter == 0:
+            # if epoch % 1 == 0:
                 if not args.no_test_model:
                     scores_mean = {'disc_mean': [], 'disc_std': [], 'pred_mean': [], 'pred_std': [], 'context_fid': []}
                     for dataset in args.train_on_datasets:
