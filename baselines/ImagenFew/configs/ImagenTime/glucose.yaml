@@ -11,13 +11,13 @@ embedding: 12
 handler: models.ImagenTime.handler
 img_resolution: 12
 unet_channels: 32
-ch_mult: [1, 2, 2]
-attn_resolution: [6, 3]
+ch_mult: [1,2,2,4]
+attn_resolution: [8,4,2]
 diffusion_steps: 36
 ema: true
 ema_warmup: 100
 # logging:
-logging_iter: 50
+logging_iter: 100
 tags: []
 run_dir: ImagenTime/glucose/
 # Data
