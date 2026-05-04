@@ -39,6 +39,7 @@ dataset_list = [
             "StarLightCurves",
             "AirQuality",
             "Electricity",
+            "glucose",
         ]
 
 def get_pretrained_datasets_names():

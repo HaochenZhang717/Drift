@@ -1,4 +1,4 @@
-from data_provider.datasets import ETTh, ETTm, Custom, UEA, GLUONTS, Sine, Stock, Energy, Mujoco, PSM, MSL, SMAP, SMD, SWAT, AirQuality
+from data_provider.datasets import ETTh, ETTm, Custom, UEA, GLUONTS, Sine, Stock, Energy, Mujoco, PSM, MSL, SMAP, SMD, SWAT, AirQuality, Glucose
 from torch.utils.data.distributed import DistributedSampler
 from torch.utils.data import DataLoader, Subset
 from .multi_dataloader_iter import MultiDataloaderIter
@@ -23,6 +23,7 @@ data_dict = {
     'energy': Energy,
     'mujoco': Mujoco,
     'AirQuality': AirQuality,
+    'glucose': Glucose,
 }
 
 def random_permute(trainset, testset):
