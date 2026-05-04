@@ -21,7 +21,7 @@ logging_iter: 100
 tags: []
 run_dir: ImagenTime/glucose/
 # Data
-datasets_dir: ./AI-READI/
+datasets_dir: /playpen-shared/haochenz/Drift/AI-READI/
 seq_len: 128
 pretrain: false
 datasets:
