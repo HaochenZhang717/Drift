@@ -1,0 +1,132 @@
+\documentclass[aspectratio=169]{beamer}
+\usetheme{Madrid}
+\usepackage{amsmath}
+\usepackage{booktabs}
+
+\title{Progress Update: Irregular Time-Series Autoencoder}
+\author{Haochen Zhang}
+\date{\today}
+
+\begin{document}
+
+\begin{frame}
+  \titlepage
+\end{frame}
+
+\begin{frame}{What I Am Building}
+  \begin{itemize}
+    \item Goal: learn a modality-specific autoencoder for \textbf{irregular AI-READI daily windows}.
+    \item Current focus file: \texttt{train\_irregular\_ts\_ae.py}.
+    \item Model file: \texttt{models/modality\_imputation/ts\_ae.py}.
+    \item Target use: robust reconstruction/imputation for wearable modalities (e.g., heart rate, respiratory rate, physical activity, calorie), optionally aligned to glucose timeline.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Data Construction Pipeline}
+  \begin{itemize}
+    \item Dataset class: \texttt{AIREADIModalityImputationDataset} with daily windows.
+    \item Typical setup:
+    \begin{itemize}
+      \item anchor modality: glucose
+      \item sequence length: 288 (5-min bins over 24h)
+      \item aligned modality option: \texttt{<modality>\_aligned\_to\_glucose}
+    \end{itemize}
+    \item I cache and filter samples in \texttt{IrregularTSDataContainer}:
+    \begin{itemize}
+      \item keep only samples with valid \((T, C)\) value/mask pairs
+      \item remove windows above \texttt{max\_missing\_ratio}
+    \end{itemize}
+    \item Output to model:
+    \begin{itemize}
+      \item \(\mathbf{x}\in\mathbb{R}^{T\times C}\): values
+      \item \(\mathbf{m}_{obs}\in\{0,1\}^{T\times C}\): observed mask
+    \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Model Architecture (\texttt{IrregularTimeSeriesAE})}
+  \begin{itemize}
+    \item Input projection: linear \(C \rightarrow d_{model}\)
+    \item Positional encoding: sinusoidal
+    \item Core encoder: Transformer encoder (multi-layer, multi-head self-attention)
+    \item Output projection: linear \(d_{model} \rightarrow C\)
+    \item Key idea: one learnable \texttt{special\_token} replaces:
+    \begin{itemize}
+      \item dataset-missing/padded timesteps
+      \item additionally masked timesteps (for denoising-style training)
+    \end{itemize}
+    \item No attention mask is applied, so all timesteps can attend globally.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Training Objective and Mask Strategy}
+  \textbf{Extra masking during training}
+  \begin{itemize}
+    \item On observed entries only, randomly drop a fraction (\texttt{input\_random\_drop\_prob}).
+    \item This creates \(\mathbf{m}_{in}\in\{0,1\}^{T\times C}\), where 1 means ``hidden from input''.
+  \end{itemize}
+
+  \textbf{Loss}
+  \[
+    \mathcal{L}
+    =
+    \frac{\sum (\hat{\mathbf{x}}-\mathbf{x})^2 \odot \mathbf{m}_{in}}
+         {\max\left(1,\sum \mathbf{m}_{in}\right)}
+  \]
+
+  \begin{itemize}
+    \item So the model is optimized specifically to recover the additionally hidden observed values.
+    \item Validation uses the same masking policy to measure reconstruction under controlled sparsification.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{Current Training Setup in Practice}
+  \begin{itemize}
+    \item Script: \texttt{scripts/train\_irtsae.sh}
+    \item Typical hyperparameters:
+  \end{itemize}
+
+  \begin{table}
+    \centering
+    \begin{tabular}{ll}
+      \toprule
+      Setting & Value \\
+      \midrule
+      \(d_{model}\) / heads / layers & 128 / 4 / 3 \\
+      batch size & 256 \\
+      optimizer & AdamW \\
+      learning rate & \(3\times10^{-4}\) \\
+      epochs & 1000 \\
+      random drop prob & 0.3 \\
+      max missing ratio & 0.5 \\
+      \bottomrule
+    \end{tabular}
+  \end{table}
+
+  \begin{itemize}
+    \item Best checkpoint is selected by validation masked-MSE and saved as \texttt{best.pt}.
+    \item Reconstruction plots are generated periodically for qualitative checks.
+  \end{itemize}
+\end{frame}
+
+\begin{frame}{What I Will Report Next}
+  \begin{itemize}
+    \item Quantitative:
+    \begin{itemize}
+      \item validation masked-MSE by modality
+      \item sensitivity to \texttt{input\_random\_drop\_prob} and \texttt{max\_missing\_ratio}
+    \end{itemize}
+    \item Qualitative:
+    \begin{itemize}
+      \item side-by-side reconstructions with/without extra masking
+      \item failure cases at highly sparse windows
+    \end{itemize}
+    \item Planned extension:
+    \begin{itemize}
+      \item compare against simple interpolation baselines
+      \item test whether latent representations help downstream drift modeling
+    \end{itemize}
+  \end{itemize}
+\end{frame}
+
+\end{document}

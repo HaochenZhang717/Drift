@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-#SBATCH --job-name=drift
+#SBATCH --job-name=imagentime256
 #SBATCH --partition=all
 #SBATCH --nodes=1
 #SBATCH --ntasks=1

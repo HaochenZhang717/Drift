@@ -16,7 +16,7 @@ import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
 
-from models.ts_ae import IrregularTimeSeriesAE
+from models.modality_imputation.ts_ae import IrregularTimeSeriesAE
 from utils.utils_dataset import AIREADIModalityImputationDataset, AIREADI_MODALITY_SPECS
 
 
