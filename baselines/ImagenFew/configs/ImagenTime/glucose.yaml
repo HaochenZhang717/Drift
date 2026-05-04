@@ -27,7 +27,8 @@ pretrain: false
 datasets:
   - name: glucose
     data: glucose
-    rel_path: glucose_train.parquet
+    rel_path_train: glucose_train.parquet
+    rel_path_test: glucose_test.parquet
     stride: 128
 train_on_datasets:
   - glucose

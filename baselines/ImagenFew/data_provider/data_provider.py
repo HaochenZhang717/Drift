@@ -4,6 +4,7 @@ from torch.utils.data import DataLoader, Subset
 from .multi_dataloader_iter import MultiDataloaderIter
 import functools
 import torch
+import copy
 
 data_dict = {
     'ETTh1': ETTh,
@@ -56,7 +57,7 @@ def data_provider(args):
         metadata = {}
         config['seq_len'] = args.seq_len
         config['datasets_dir'] = args.datasets_dir
-        trainset, testset = get_train(config), get_train(config)
+        trainset, testset = get_train(config), get_test(config)
         subset_p = getattr(args,'subset_p', None)
         subset_n = getattr(args,'subset_n', None)
 
@@ -93,16 +94,22 @@ def data_provider(args):
 
 
 def get_train(config):
-    Data = data_dict[config['data']]
-    config['flag'] = 'train'
-    if 'subset_n' in config.keys():
-        return Subset(Data(**config), torch.arange(config['subset_n']))
-    return Data(**config)
+    cfg = copy.deepcopy(config)
+    Data = data_dict[cfg['data']]
+    cfg['flag'] = 'train'
+    if cfg['data'] == 'glucose':
+        cfg['rel_path'] = cfg.get('rel_path_train', cfg.get('rel_path', 'glucose_train.parquet'))
+    if 'subset_n' in cfg.keys():
+        return Subset(Data(**cfg), torch.arange(cfg['subset_n']))
+    return Data(**cfg)
 
 def get_test(config):
-    Data = data_dict[config['data']]
-    config['flag'] = 'test'
-    return Data(**config)
+    cfg = copy.deepcopy(config)
+    Data = data_dict[cfg['data']]
+    cfg['flag'] = 'test'
+    if cfg['data'] == 'glucose':
+        cfg['rel_path'] = cfg.get('rel_path_test', 'glucose_test.parquet')
+    return Data(**cfg)
 
 def dataset_to_tensor(dataset, args):
     loader = DataLoader(dataset, batch_size=args.batch_size, shuffle=False)
