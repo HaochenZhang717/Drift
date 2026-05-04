@@ -27,6 +27,11 @@ def _normalize_array(values: np.ndarray, value_min: float, value_max: float) -> 
 
 def Glucose(seq_len, datasets_dir, rel_path="glucose_train.parquet", stride=1, **kwargs):
     parquet_path = os.path.join(datasets_dir, rel_path)
+    flag = kwargs.get("flag", "unknown")
+    print(
+        f"[GlucoseDataset] flag={flag} parquet_path={parquet_path} "
+        f"seq_len={seq_len} stride={stride}"
+    )
     if not os.path.exists(parquet_path):
         raise FileNotFoundError(
             f"Glucose parquet not found: {parquet_path}. "
