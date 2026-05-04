@@ -142,22 +142,27 @@ def main() -> None:
     parser.add_argument(
         "--ettm2_dir",
         type=str,
-        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/ETTm2/a5de4592-8dfc-4a51-a381-67dfa769606c",
+        default="/playpen-shared/haochenz/Drift/logs/ImagenTime/ETTm2/1a746657-a3bf-4dc4-b145-12cf4422e977",
     )
     parser.add_argument(
         "--etth2_dir",
         type=str,
-        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/ETTh2/69ab4190-6534-48e8-94b2-ea4615543e9a",
+        default="/playpen-shared/haochenz/Drift/logs/ImagenTime/ETTh2/075d365a-305c-4664-986a-c268eae56de6",
+    )
+    parser.add_argument(
+        "--ettm1_dir",
+        type=str,
+        default="/playpen-shared/haochenz/Drift/logs/ImagenTime/ETTm1/e1126afd-35f2-46ee-a7e9-a0ca558476c4",
     )
     parser.add_argument(
         "--weather_dir",
         type=str,
-        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/Weather/eedd9e3e-bbd5-4cb7-9ec9-c699efcb35a5",
+        default="/playpen-shared/haochenz/Drift/logs/ImagenTime/Weather/80b0e9fb-777d-4282-bdbc-362cb6bd47c0",
     )
     parser.add_argument(
         "--airquality_dir",
         type=str,
-        default="/playpen-shared/haochenz/ImagenFew/logs/ImagenTime/AirQuality/5f6d7eae-3d45-44af-b713-070e3d245835",
+        default="/playpen-shared/haochenz/Drift/logs/ImagenTime/AirQuality/5db9c0c8-2560-4827-bd7d-259d201793ed",
     )
 
     args = parser.parse_args()
@@ -180,6 +185,7 @@ def main() -> None:
         dataset_to_dir = {
             "ETTm2": Path(args.ettm2_dir),
             "ETTh2": Path(args.etth2_dir),
+            "ETTm1": Path(args.ettm1_dir),
             "Weather": Path(args.weather_dir),
             "AirQuality": Path(args.airquality_dir),
         }
