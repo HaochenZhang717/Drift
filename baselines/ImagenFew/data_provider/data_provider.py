@@ -64,7 +64,8 @@ def data_provider(args):
         # Randomly permute train/testsets
         trainset, testset = random_permute(trainset, testset)
         if (subset_n is not None or subset_p is not None) and (not 'subset_n' in config.keys()):
-            trainset, testset = random_subset(trainset, subset_p, subset_n), trainset
+            # Keep evaluation on the true test split; only subset the training split.
+            trainset = random_subset(trainset, subset_p, subset_n)
         trainset, testset = dataset_to_tensor(trainset, args), dataset_to_tensor(testset, args)
         if args.finetune:
             assert trainset.size(1) == args.seq_len, f"{config['name']} Does not output proper sequence length"
