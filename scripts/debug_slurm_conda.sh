@@ -18,7 +18,8 @@ unset CONDA_EXE CONDA_PREFIX CONDA_SHLVL _CE_CONDA _CE_M
 hash -r
 
 # 加载你自己的 conda
-source /mnt/unites9/playpen/haochenz/miniconda3/etc/profile.d/conda.sh
+#source /mnt/unites9/playpen/haochenz/miniconda3/etc/profile.d/conda.sh
+source /playpen/haochenz/miniconda3/etc/profile.d/conda.sh
 
 echo "===== ACTIVATE ENV ====="
 conda activate qwen3_vl_eval
