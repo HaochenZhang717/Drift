@@ -173,6 +173,7 @@ def build_model_args(args: argparse.Namespace) -> SimpleNamespace:
         mm_n_heads=args.mm_n_heads,
         ae_input_dim=1,
         ae_d_model=args.ae_d_model,
+        ae_max_len=args.ae_max_len,
         ae_nheads=args.ae_nheads,
         ae_num_layers=args.ae_num_layers,
         ae_cpt_paths={
@@ -248,7 +249,6 @@ def train(args: argparse.Namespace) -> None:
         pin_memory=True,
         drop_last=False,
     )
-
     model_args = build_model_args(args)
     model = Denoiser(model_args).to(device)
     print(f"Trainable parameters: {count_parameters(model):,}")
@@ -411,6 +411,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ae_d_model", type=int, default=128)
     parser.add_argument("--ae_nheads", type=int, default=4)
     parser.add_argument("--ae_num_layers", type=int, default=4)
+    parser.add_argument("--ae_max_len", type=int, default=10000)
 
     parser.add_argument("--ckpt_heart_rate", type=str, required=True)
     parser.add_argument("--ckpt_calorie", type=str, required=True)

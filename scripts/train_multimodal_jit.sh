@@ -77,6 +77,7 @@ python train_multimodal_jit.py \
     --ae_d_model 128 \
     --ae_nheads 4 \
     --ae_num_layers 3 \
+    --ae_max_len 288 \
     \
     --ckpt_heart_rate ${CKPT_HEART_RATE} \
     --ckpt_calorie ${CKPT_CALORIE} \

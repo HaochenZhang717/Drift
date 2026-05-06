@@ -19,6 +19,7 @@ class Denoiser(nn.Module):
             ae_d_model=args.ae_d_model,
             ae_nhead=args.ae_nheads,
             ae_num_layers= args.ae_num_layers,
+            ae_max_len=args.ae_max_len,
             ckpt_paths=args.ae_cpt_paths,
             strict_load=True
         )
