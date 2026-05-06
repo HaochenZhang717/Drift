@@ -223,7 +223,6 @@ class MultiModalEncoder(nn.Module):
             valid_ratio = observed_mask.mean(dim=(1, 2))
             missing_ratio = 1.0 - valid_ratio
             use_missing_tokens = missing_ratio > self.modality_missing_ratio_threshold
-            breakpoint()
             if use_missing_tokens.any():
                 missing_tokens = self.modality_missing_special_tokens[modality].expand(encoded.size(0), -1, -1)
                 attended = torch.where(use_missing_tokens.view(-1, 1, 1), missing_tokens, attended)

@@ -114,8 +114,8 @@ python train_multimodal_jit.py \
     --anchor_sampling_minutes 5.0 \
     --anchor_sampling_tolerance_seconds 2 \
     \
-    --log_interval 20 \
-    --save_interval 10 \
+    --log_interval 10 \
+    --save_interval 100 \
     \
     --wandb \
     --wandb_project multimodal_cgm \
