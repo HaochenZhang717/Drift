@@ -91,7 +91,7 @@ def batch_to_model_inputs(
     target = batch["target"][valid].float().to(device)
     if target.ndim == 2:
         target = target.unsqueeze(-1)
-    x = delay_embedder.ts_to_img(target)
+    x, x_mask = delay_embedder.ts_to_img(target, return_pad_mask=True)
 
     hr = _select_modality_pack(batch, "heart_rate")
     cal = _select_modality_pack(batch, "calorie")
@@ -100,6 +100,7 @@ def batch_to_model_inputs(
 
     return {
         "x": x,
+        "x_mask": x_mask,
         "study_group": labels,
         "heart_rate": hr["values"][valid].float().to(device),
         "calorie": cal["values"][valid].float().to(device),
@@ -215,8 +216,8 @@ def train(args: argparse.Namespace) -> None:
 
         for batch in train_loader:
             inputs = batch_to_model_inputs(batch, delay_embedder, args.num_classes, device)
-            if not inputs:
-                continue
+            # if not inputs:
+            #     continue
             breakpoint()
             optimizer.zero_grad(set_to_none=True)
             loss = model(**inputs)

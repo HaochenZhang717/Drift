@@ -71,6 +71,7 @@ class Denoiser(nn.Module):
     def forward(
             self,
             x: torch.Tensor,
+            x_mask: torch.Tensor,
             study_group: torch.Tensor,
             heart_rate: torch.Tensor,
             calorie: torch.Tensor,
@@ -99,10 +100,12 @@ class Denoiser(nn.Module):
         t = self.sample_t(x.size(0), device=x.device).view(-1, *([1] * (x.ndim - 1)))
         e = torch.randn_like(x) * self.noise_scale
 
-        z = t * x + (1 - t) * e
+        breakpoint()
+        z = (t * x + (1 - t) * e) * x_mask
         v = (x - z) / (1 - t).clamp_min(self.t_eps)
 
         x_pred = self.net.forward(z, t.flatten(), study_group, cond_tokens)
+        breakpoint()
         v_pred = (x_pred - z) / (1 - t).clamp_min(self.t_eps)
 
         # l2 loss

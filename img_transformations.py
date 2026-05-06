@@ -116,7 +116,7 @@ class DelayEmbedder(TsImgEmbedder):
         _, _, original_cols, original_rows = original_shape
         return x[:, :, :original_cols, :original_rows]
 
-    def ts_to_img(self, signal, pad=True, mask=0):
+    def ts_to_img(self, signal, pad=True, mask=0, return_pad_mask=False):
 
         batch, length, features = signal.shape
         #  if our sequences are of different lengths, this can happen with physionet and climate datasets
@@ -128,11 +128,13 @@ class DelayEmbedder(TsImgEmbedder):
             dtype=signal.dtype,
             device=signal.device,
         )
+        pad_mask = torch.zeros_like(x_image)
         i = 0
         while (i * self.delay + self.embedding) <= self.seq_len:
             start = i * self.delay
             end = start + self.embedding
             x_image[:, :, :, i] = signal[:, start:end].permute(0, 2, 1)
+            pad_mask[:, :, :, i] = 1
             i += 1
 
         ### SPECIAL CASE
@@ -141,15 +143,20 @@ class DelayEmbedder(TsImgEmbedder):
             end = signal[:, start:].permute(0, 2, 1).shape[-1]
             # end = start + (self.embedding - 1) - missing_vals
             x_image[:, :, :end, i] = signal[:, start:].permute(0, 2, 1)
+            pad_mask[:, :, :end, i] = 1
             i += 1
 
         # cache the shape of the image before padding
         self.img_shape = (batch, features, self.embedding, i)
         x_image = x_image.to(self.device)[:, :, :, :i]
+        pad_mask = pad_mask.to(self.device)[:, :, :, :i]
 
         if pad:
             x_image = self.pad_to_square(x_image, mask)
+            pad_mask = self.pad_to_square(pad_mask, 0)
 
+        if return_pad_mask:
+            return x_image, pad_mask
         return x_image
 
     def img_to_ts(self, img):
