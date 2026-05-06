@@ -108,7 +108,7 @@ class MultiModalEncoder(nn.Module):
 
         self.modality_missing_special_tokens = nn.ParameterDict(
             {
-                m: nn.Parameter(torch.randn(1, n_tokens, dim_in) * 0.02)
+                m: nn.Parameter(torch.randn(1, n_tokens, dim_out) * 0.02)
                 for m in self.MODALITIES
             }
         )
@@ -218,6 +218,7 @@ class MultiModalEncoder(nn.Module):
             )
             attended = self.out_proj(attended)
 
+            # use missing_tokens to replace if missing ratio is high
             observed_mask = modality_masks[modality].float()
             valid_ratio = observed_mask.mean(dim=(1, 2))
             missing_ratio = 1.0 - valid_ratio
@@ -225,7 +226,6 @@ class MultiModalEncoder(nn.Module):
             breakpoint()
             if use_missing_tokens.any():
                 missing_tokens = self.modality_missing_special_tokens[modality].expand(encoded.size(0), -1, -1)
-                missing_tokens = self.out_proj(missing_tokens)
                 attended = torch.where(use_missing_tokens.view(-1, 1, 1), missing_tokens, attended)
 
             attended_groups.append(attended)
