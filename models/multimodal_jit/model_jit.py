@@ -231,7 +231,6 @@ class JiT(nn.Module):
         self.input_size = input_size
         self.in_context_len = in_context_len
         self.in_context_start = in_context_start
-        # self.num_classes = num_classes
 
         # time and class embed
         self.t_embedder = TimestepEmbedder(hidden_size)

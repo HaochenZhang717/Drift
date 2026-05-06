@@ -29,6 +29,7 @@ class MultiModalEncoder(nn.Module):
         n_tokens: int,
         dim_in: int = 128,
         dim_out: int = 128,
+        modality_missing_ratio_threshold: float = 1.0,
         nhead_cross: int = 4,
         ae_input_dim: int = 1,
         ae_d_model: int = 128,
@@ -46,6 +47,9 @@ class MultiModalEncoder(nn.Module):
         self.n_tokens = n_tokens
         self.dim_in = dim_in
         self.dim_out = dim_out
+        if not (0.0 <= modality_missing_ratio_threshold <= 1.0):
+            raise ValueError("modality_missing_ratio_threshold must be in [0, 1]")
+        self.modality_missing_ratio_threshold = float(modality_missing_ratio_threshold)
 
         # 4 modality-specific AEs
         self.heart_rate_ae = IrregularTimeSeriesAE(
@@ -55,6 +59,7 @@ class MultiModalEncoder(nn.Module):
             num_layers=ae_num_layers,
             max_len=ae_max_len,
         )
+
         self.calorie_ae = IrregularTimeSeriesAE(
             input_dim=ae_input_dim,
             d_model=ae_d_model,
@@ -100,6 +105,14 @@ class MultiModalEncoder(nn.Module):
                 for m in self.MODALITIES
             }
         )
+
+        self.modality_missing_special_tokens = nn.ParameterDict(
+            {
+                m: nn.Parameter(torch.randn(1, n_tokens, dim_in) * 0.02)
+                for m in self.MODALITIES
+            }
+        )
+
 
         # Modality-specific cross-attention blocks
         self.cross_attentions = nn.ModuleDict(
@@ -189,6 +202,12 @@ class MultiModalEncoder(nn.Module):
             "physical_activity": pa_tokens,
             "respiratory_rate": rr_tokens,
         }
+        modality_masks = {
+            "heart_rate": heart_rate_observed_mask,
+            "calorie": calorie_observed_mask,
+            "physical_activity": physical_activity_observed_mask,
+            "respiratory_rate": respiratory_rate_observed_mask,
+        }
 
         attended_groups = []
         for modality in self.MODALITIES:
@@ -198,6 +217,17 @@ class MultiModalEncoder(nn.Module):
                 query=q, key=encoded, value=encoded, need_weights=False
             )
             attended = self.out_proj(attended)
+
+            observed_mask = modality_masks[modality].float()
+            valid_ratio = observed_mask.mean(dim=(1, 2))
+            missing_ratio = 1.0 - valid_ratio
+            use_missing_tokens = missing_ratio > self.modality_missing_ratio_threshold
+            breakpoint()
+            if use_missing_tokens.any():
+                missing_tokens = self.modality_missing_special_tokens[modality].expand(encoded.size(0), -1, -1)
+                missing_tokens = self.out_proj(missing_tokens)
+                attended = torch.where(use_missing_tokens.view(-1, 1, 1), missing_tokens, attended)
+
             attended_groups.append(attended)
 
         return torch.cat(attended_groups, dim=1)

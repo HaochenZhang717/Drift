@@ -2,11 +2,11 @@ import argparse
 import random
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict, List
+from typing import Any, Dict
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import DataLoader
 try:
     import wandb
 except ImportError:
@@ -24,59 +24,6 @@ MODALITY_KEYS = {
     "physical_activity": "physical_activity_aligned_to_glucose",
     "respiratory_rate": "respiratory_rate_aligned_to_glucose",
 }
-
-
-class MultiModalFilteredContainer(Dataset):
-    """Preload and filter AI-READI samples with too many missing values."""
-
-    def __init__(
-        self,
-        base_dataset: AIREADIModalityImputationDataset,
-        max_missing_ratio: float,
-        required_modalities: List[str],
-    ):
-        super().__init__()
-        if not (0.0 <= max_missing_ratio <= 1.0):
-            raise ValueError("max_missing_ratio must be in [0, 1]")
-
-        self.samples: List[Dict[str, Any]] = []
-        self.total_seen = 0
-        self.total_kept = 0
-        self.required_modalities = required_modalities
-
-        for idx in range(len(base_dataset)):
-            item = base_dataset[idx]
-            self.total_seen += 1
-            try:
-                if self._is_valid(item, max_missing_ratio):
-                    self.samples.append(item)
-            except Exception:
-                continue
-
-        self.total_kept = len(self.samples)
-        if self.total_kept == 0:
-            raise ValueError(
-                "No samples left after missing-ratio filtering. "
-                "Try increasing --max_missing_ratio."
-            )
-
-    def _is_valid(self, item: Dict[str, Any], max_missing_ratio: float) -> bool:
-        for modality in self.required_modalities:
-            pack = _select_modality_pack(item, modality)
-            observed_mask = pack["mask"].float()
-            if observed_mask.ndim != 2:
-                return False
-            valid_ratio = float(observed_mask.mean().item()) if observed_mask.numel() > 0 else 0.0
-            missing_ratio = 1.0 - valid_ratio
-            if missing_ratio > max_missing_ratio:
-                return False
-        return True
-
-    def __len__(self) -> int:
-        return len(self.samples)
-
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
-        return self.samples[idx]
 
 
 def set_seed(seed: int) -> None:
@@ -176,6 +123,7 @@ def build_model_args(args: argparse.Namespace) -> SimpleNamespace:
         ae_max_len=args.ae_max_len,
         ae_nheads=args.ae_nheads,
         ae_num_layers=args.ae_num_layers,
+        mm_missing_ratio_threshold=args.max_missing_ratio,
         ae_cpt_paths={
             "heart_rate": args.ckpt_heart_rate,
             "calorie": args.ckpt_calorie,
@@ -215,23 +163,7 @@ def train(args: argparse.Namespace) -> None:
     train_base = build_dataset(args, args.train_split)
     val_base = build_dataset(args, args.val_split)
     print(f"Raw windows | train: {len(train_base)} | val: {len(val_base)}")
-
-    required_modalities = ["heart_rate", "calorie", "physical_activity", "respiratory_rate"]
-    train_dataset = MultiModalFilteredContainer(
-        base_dataset=train_base,
-        max_missing_ratio=args.max_missing_ratio,
-        required_modalities=required_modalities,
-    )
-    val_dataset = MultiModalFilteredContainer(
-        base_dataset=val_base,
-        max_missing_ratio=args.max_missing_ratio,
-        required_modalities=required_modalities,
-    )
-    print(
-        f"Filtered windows | train: {len(train_dataset)}/{train_dataset.total_seen} | "
-        f"val: {len(val_dataset)}/{val_dataset.total_seen} | "
-        f"max_missing_ratio={args.max_missing_ratio:.2f}"
-    )
+    print(f"Missing-token threshold (per modality): {args.max_missing_ratio:.2f}")
 
     train_loader = DataLoader(
         train_dataset,
@@ -283,7 +215,6 @@ def train(args: argparse.Namespace) -> None:
 
         for batch in train_loader:
             inputs = batch_to_model_inputs(batch, delay_embedder, args.num_classes, device)
-            breakpoint()
             if not inputs:
                 continue
 

@@ -14,6 +14,7 @@ class Denoiser(nn.Module):
             n_tokens=args.num_tokens_per_modality,
             dim_in=args.mm_dim_in,
             dim_out=args.hidden_channels,
+            modality_missing_ratio_threshold=args.mm_missing_ratio_threshold,
             nhead_cross=args.mm_n_heads,
             ae_input_dim=args.ae_input_dim,
             ae_d_model=args.ae_d_model,
