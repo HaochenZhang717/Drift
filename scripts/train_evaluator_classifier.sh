@@ -3,7 +3,7 @@
 set -e
 set -x
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=2
 
 
 DATA_ROOT=/playpen-shared/haochenz/AI-READI-processed
