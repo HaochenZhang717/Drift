@@ -6,8 +6,8 @@ set -x
 export CUDA_VISIBLE_DEVICES=2
 
 
-DATA_ROOT=/playpen-shared/haochenz/AI-READI-processed
-PARTICIPANTS_TSV=/playpen-shared/haochenz/AI-READI-processed/participants.tsv
+DATA_ROOT=/playpen-shared/haochenz/AI-READI-Dataset/AI-READI-processed
+PARTICIPANTS_TSV=/playpen-shared/mshuang/morris/morris/d9ef6cf1-f6c3-4956-a91e-adf409e105f0/dataset/participants.tsv
 
 OUTPUT_DIR=./outputs/aireadi_eval_classifier
 
