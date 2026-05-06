@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from model_jit import JiT
+from models.model_jit import JiT
 from models.multi_modal_encoder import MultiModalEncoder
 
 class Denoiser(nn.Module):
