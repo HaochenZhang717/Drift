@@ -107,9 +107,8 @@ class Denoiser(nn.Module):
 
         v_pred = (x_pred - z) / (1 - t).clamp_min(self.t_eps)
 
-        # l2 loss
+        # l2 loss only calculate valid area
         loss = (v - v_pred) ** 2
-        breakpoint()
         loss = (loss.sum(dim=(1,2,3)) / x_mask.sum(dim=(1,2,3))).mean()
 
         return loss

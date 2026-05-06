@@ -280,7 +280,7 @@ def train_step(
         device=device,
     )
 
-    breakpoint()
+    # breakpoint()
     # Generate samples
     x_gen = model(noise, labels, alpha) # (n_class*n_neg, 1, 32, 32)
 
