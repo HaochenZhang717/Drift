@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Dict, Optional
 import torch
 import torch.nn as nn
-from models.modality_imputation.ts_ae import IrregularTimeSeriesAE
+from models.ts_ae import IrregularTimeSeriesAE
 
 
 class MultiModalEncoder(nn.Module):
