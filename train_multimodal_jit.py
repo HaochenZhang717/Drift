@@ -217,7 +217,7 @@ def train(args: argparse.Namespace) -> None:
             inputs = batch_to_model_inputs(batch, delay_embedder, args.num_classes, device)
             if not inputs:
                 continue
-
+            breakpoint()
             optimizer.zero_grad(set_to_none=True)
             loss = model(**inputs)
             loss.backward()
