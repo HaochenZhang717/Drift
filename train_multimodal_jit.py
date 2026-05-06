@@ -14,7 +14,7 @@ except ImportError:
 
 from img_transformations import DelayEmbedder
 from utils.utils_dataset import AI_READI_STUDY_GROUPS, AIREADIModalityImputationDataset
-from utils.utils_drift import count_parameters
+from utils.utils_drift import EMA, count_parameters
 from models.multimodal_jit.denoiser import Denoiser
 
 
@@ -191,6 +191,8 @@ def train(args: argparse.Namespace) -> None:
         lr=args.lr,
         weight_decay=args.weight_decay,
     )
+    ema1 = EMA(model, decay=args.ema_decay1)
+    ema2 = EMA(model, decay=args.ema_decay2)
 
     delay_embedder = DelayEmbedder(device=device, seq_len=args.ts_seq_len, delay=args.ts_delay, embedding=args.ts_embedding)
 
@@ -209,6 +211,8 @@ def train(args: argparse.Namespace) -> None:
 
     global_step = 0
     best_val_loss = float("inf")
+    best_val_loss_ema1 = float("inf")
+    best_val_loss_ema2 = float("inf")
     for epoch in range(args.epochs):
         model.train()
         epoch_loss = 0.0
@@ -216,15 +220,16 @@ def train(args: argparse.Namespace) -> None:
 
         for batch in train_loader:
             inputs = batch_to_model_inputs(batch, delay_embedder, args.num_classes, device)
-            # if not inputs:
-            #     continue
-            # breakpoint()
+            if not inputs:
+                continue
             optimizer.zero_grad(set_to_none=True)
             loss = model(**inputs)
             loss.backward()
             if args.grad_clip > 0:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
             optimizer.step()
+            ema1.update(model)
+            ema2.update(model)
 
             loss_val = float(loss.item())
             epoch_loss += loss_val
@@ -244,30 +249,44 @@ def train(args: argparse.Namespace) -> None:
                     )
 
         avg_loss = epoch_loss / max(1, n_steps)
-        model.eval()
-        val_loss_sum = 0.0
-        val_steps = 0
-        with torch.no_grad():
-            for batch in val_loader:
-                inputs = batch_to_model_inputs(batch, delay_embedder, args.num_classes, device)
-                if not inputs:
-                    continue
-                val_loss = model(**inputs)
-                val_loss_sum += float(val_loss.item())
-                val_steps += 1
-        avg_val_loss = val_loss_sum / max(1, val_steps)
+
+        def evaluate_eval_loss(eval_model: torch.nn.Module) -> float:
+            eval_model.eval()
+            val_loss_sum_local = 0.0
+            val_steps_local = 0
+            with torch.no_grad():
+                for batch in val_loader:
+                    inputs = batch_to_model_inputs(batch, delay_embedder, args.num_classes, device)
+                    if not inputs:
+                        continue
+                    val_loss_local = eval_model(**inputs)
+                    val_loss_sum_local += float(val_loss_local.item())
+                    val_steps_local += 1
+            return val_loss_sum_local / max(1, val_steps_local)
+
+        avg_val_loss = evaluate_eval_loss(model)
+        avg_val_loss_ema1 = evaluate_eval_loss(ema1.shadow)
+        avg_val_loss_ema2 = evaluate_eval_loss(ema2.shadow)
         best_val_loss = min(best_val_loss, avg_val_loss)
+        best_val_loss_ema1 = min(best_val_loss_ema1, avg_val_loss_ema1)
+        best_val_loss_ema2 = min(best_val_loss_ema2, avg_val_loss_ema2)
 
         print(
             f"Epoch {epoch + 1} done | train_loss={avg_loss:.6f} | "
-            f"val_loss={avg_val_loss:.6f} | best_val={best_val_loss:.6f} | steps={n_steps}"
+            f"val_model={avg_val_loss:.6f} | val_ema1={avg_val_loss_ema1:.6f} | val_ema2={avg_val_loss_ema2:.6f} | "
+            f"best_model={best_val_loss:.6f} | best_ema1={best_val_loss_ema1:.6f} | best_ema2={best_val_loss_ema2:.6f} | "
+            f"steps={n_steps}"
         )
         if wb is not None:
             wandb.log(
                 {
                     "train/loss_epoch": avg_loss,
-                    "val/loss_epoch": avg_val_loss,
-                    "val/best_loss": best_val_loss,
+                    "val/model_loss_epoch": avg_val_loss,
+                    "val/ema1_loss_epoch": avg_val_loss_ema1,
+                    "val/ema2_loss_epoch": avg_val_loss_ema2,
+                    "val/model_best_loss": best_val_loss,
+                    "val/ema1_best_loss": best_val_loss_ema1,
+                    "val/ema2_best_loss": best_val_loss_ema2,
                     "epoch": epoch + 1,
                 },
                 step=global_step,
@@ -278,10 +297,14 @@ def train(args: argparse.Namespace) -> None:
             torch.save(
                 {
                     "model": model.state_dict(),
+                    "ema1": ema1.state_dict(),
+                    "ema2": ema2.state_dict(),
                     "optimizer": optimizer.state_dict(),
                     "epoch": epoch,
                     "step": global_step,
                     "best_val_loss": best_val_loss,
+                    "best_val_loss_ema1": best_val_loss_ema1,
+                    "best_val_loss_ema2": best_val_loss_ema2,
                     "args": vars(args),
                 },
                 ckpt_path,
@@ -292,10 +315,14 @@ def train(args: argparse.Namespace) -> None:
     torch.save(
         {
             "model": model.state_dict(),
+            "ema1": ema1.state_dict(),
+            "ema2": ema2.state_dict(),
             "optimizer": optimizer.state_dict(),
             "epoch": args.epochs - 1,
             "step": global_step,
             "best_val_loss": best_val_loss,
+            "best_val_loss_ema1": best_val_loss_ema1,
+            "best_val_loss_ema2": best_val_loss_ema2,
             "args": vars(args),
         },
         final_path,

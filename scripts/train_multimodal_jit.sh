@@ -48,8 +48,8 @@ python train_multimodal_jit.py \
     \
     --output_dir ${OUTPUT_DIR} \
     \
-    --epochs 100 \
-    --batch_size 32 \
+    --epochs 1000 \
+    --batch_size 256 \
     --num_workers 4 \
     --seed 42 \
     \
