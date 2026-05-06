@@ -283,6 +283,7 @@ def train(args: argparse.Namespace) -> None:
 
         for batch in train_loader:
             inputs = batch_to_model_inputs(batch, delay_embedder, args.num_classes, device)
+            breakpoint()
             if not inputs:
                 continue
 
