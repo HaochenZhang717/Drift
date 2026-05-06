@@ -100,17 +100,17 @@ class Denoiser(nn.Module):
         t = self.sample_t(x.size(0), device=x.device).view(-1, *([1] * (x.ndim - 1)))
         e = torch.randn_like(x) * self.noise_scale
 
-        breakpoint()
-        z = (t * x + (1 - t) * e) * x_mask
-        v = (x - z) / (1 - t).clamp_min(self.t_eps)
+        z = x_mask * (t * x + (1 - t) * e)
+        v = x_mask * (x - z) / (1 - t).clamp_min(self.t_eps)
 
-        x_pred = self.net.forward(z, t.flatten(), study_group, cond_tokens)
-        breakpoint()
+        x_pred = x_mask * self.net.forward(z, t.flatten(), study_group, cond_tokens)
+
         v_pred = (x_pred - z) / (1 - t).clamp_min(self.t_eps)
 
         # l2 loss
         loss = (v - v_pred) ** 2
-        loss = loss.mean(dim=(1, 2, 3)).mean()
+        breakpoint()
+        loss = (loss.sum(dim=(1,2,3)) / x_mask.sum(dim=(1,2,3))).mean()
 
         return loss
 
