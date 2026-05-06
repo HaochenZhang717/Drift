@@ -160,9 +160,9 @@ def train(args: argparse.Namespace) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    train_base = build_dataset(args, args.train_split)
-    val_base = build_dataset(args, args.val_split)
-    print(f"Raw windows | train: {len(train_base)} | val: {len(val_base)}")
+    train_dataset = build_dataset(args, args.train_split)
+    val_dataset = build_dataset(args, args.val_split)
+    print(f"Raw windows | train: {len(train_dataset)} | val: {len(val_dataset)}")
     print(f"Missing-token threshold (per modality): {args.max_missing_ratio:.2f}")
 
     train_loader = DataLoader(
