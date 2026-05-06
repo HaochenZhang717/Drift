@@ -21,7 +21,7 @@ mkdir -p ${LOG_DIR}
 # Dataset
 # --------------------------------------------------------
 DATA_ROOT="/playpen-shared/haochenz/AI-READI-Dataset/AI-READI-processed"
-PARTICIPANTS_TSV="/playpen-shared/mshuang/morris/morris/d9ef6cf1-f6c3-4956-a91e-adf409e105f0/dataset/participants.tsv"
+PARTICIPANTS_TSV_PATH="/playpen-shared/mshuang/morris/morris/d9ef6cf1-f6c3-4956-a91e-adf409e105f0/dataset/participants.tsv"
 
 
 
