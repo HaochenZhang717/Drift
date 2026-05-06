@@ -484,30 +484,30 @@ if __name__ == "__main__":
 
 
 
-    class example_model(nn.Module):
-        def __init__(self,):
-            super().__init__()
-            # (n, 120, 1) -> (n, 1, 64)
-            # (n, 1, 120) -> (n, 64, 1)
-            # 64 dimensional
-            self.baseline_weight_proj = nn.Sequential(
-                nn.Conv1d(1, 16, ),
-                nn.
-
-                nn.Mean(dim=-1)
-            )
-
-            self.q_proj()
-            self.k_proj()
-
-
-
-        def forward(self, x):
-            '''
-            :param past_week_history: (B, num_days, 96)
-            :return: (B, 1, 96)
-            '''
-            baseline = 0.7 * one_day_ago + 0.3 * one_week_ago
-            baseline = self.baseline_weight_proj(baseline) * baseline
-
-            historry*(q@k.transpose()/sqrt(d))
+    # class example_model(nn.Module):
+    #     def __init__(self,):
+    #         super().__init__()
+    #         # (n, 120, 1) -> (n, 1, 64)
+    #         # (n, 1, 120) -> (n, 64, 1)
+    #         # 64 dimensional
+    #         self.baseline_weight_proj = nn.Sequential(
+    #             nn.Conv1d(1, 16, ),
+    #             nn.
+    #
+    #             nn.Mean(dim=-1)
+    #         )
+    #
+    #         self.q_proj()
+    #         self.k_proj()
+    #
+    #
+    #
+    #     def forward(self, x):
+    #         '''
+    #         :param past_week_history: (B, num_days, 96)
+    #         :return: (B, 1, 96)
+    #         '''
+    #         baseline = 0.7 * one_day_ago + 0.3 * one_week_ago
+    #         baseline = self.baseline_weight_proj(baseline) * baseline
+    #
+    #         historry*(q@k.transpose()/sqrt(d))

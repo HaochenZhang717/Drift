@@ -77,18 +77,18 @@ class TimestepEmbedder(nn.Module):
         return t_emb
 
 
-# class LabelEmbedder(nn.Module):
-#     """
-#     Embeds class labels into vector representations. Also handles label dropout for classifier-free guidance.
-#     """
-#     def __init__(self, num_classes, hidden_size):
-#         super().__init__()
-#         self.embedding_table = nn.Embedding(num_classes + 1, hidden_size)
-#         self.num_classes = num_classes
-#
-#     def forward(self, labels):
-#         embeddings = self.embedding_table(labels)
-#         return embeddings
+class LabelEmbedder(nn.Module):
+    """
+    Embeds class labels into vector representations.
+    """
+    def __init__(self, num_classes, hidden_size):
+        super().__init__()
+        self.embedding_table = nn.Embedding(num_classes + 1, hidden_size)
+        self.num_classes = num_classes
+
+    def forward(self, labels):
+        embeddings = self.embedding_table(labels)
+        return embeddings
 
 
 def scaled_dot_product_attention(query, key, value, dropout_p=0.0) -> torch.Tensor:
@@ -211,6 +211,7 @@ class JiT(nn.Module):
         input_size=256,
         patch_size=16,
         in_channels=3,
+        num_classes=4,
         hidden_size=1024,
         depth=24,
         num_heads=16,
@@ -296,7 +297,7 @@ class JiT(nn.Module):
         nn.init.constant_(self.x_embedder.proj2.bias, 0)
 
         # Initialize label embedding table:
-        nn.init.normal_(self.y_embedder.embedding_table.weight, std=0.02)
+        nn.init.normal_(self.label_embedder.embedding_table.weight, std=0.02)
 
         nn.init.normal_(self.t_embedder.mlp[0].weight, std=0.02)
         nn.init.normal_(self.t_embedder.mlp[2].weight, std=0.02)

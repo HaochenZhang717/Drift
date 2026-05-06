@@ -2,11 +2,15 @@ import argparse
 import random
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 import numpy as np
 import torch
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Dataset
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 from img_transformations import DelayEmbedder
 from utils.utils_dataset import AI_READI_STUDY_GROUPS, AIREADIModalityImputationDataset
@@ -20,6 +24,59 @@ MODALITY_KEYS = {
     "physical_activity": "physical_activity_aligned_to_glucose",
     "respiratory_rate": "respiratory_rate_aligned_to_glucose",
 }
+
+
+class MultiModalFilteredContainer(Dataset):
+    """Preload and filter AI-READI samples with too many missing values."""
+
+    def __init__(
+        self,
+        base_dataset: AIREADIModalityImputationDataset,
+        max_missing_ratio: float,
+        required_modalities: List[str],
+    ):
+        super().__init__()
+        if not (0.0 <= max_missing_ratio <= 1.0):
+            raise ValueError("max_missing_ratio must be in [0, 1]")
+
+        self.samples: List[Dict[str, Any]] = []
+        self.total_seen = 0
+        self.total_kept = 0
+        self.required_modalities = required_modalities
+
+        for idx in range(len(base_dataset)):
+            item = base_dataset[idx]
+            self.total_seen += 1
+            try:
+                if self._is_valid(item, max_missing_ratio):
+                    self.samples.append(item)
+            except Exception:
+                continue
+
+        self.total_kept = len(self.samples)
+        if self.total_kept == 0:
+            raise ValueError(
+                "No samples left after missing-ratio filtering. "
+                "Try increasing --max_missing_ratio."
+            )
+
+    def _is_valid(self, item: Dict[str, Any], max_missing_ratio: float) -> bool:
+        for modality in self.required_modalities:
+            pack = _select_modality_pack(item, modality)
+            observed_mask = pack["mask"].float()
+            if observed_mask.ndim != 2:
+                return False
+            valid_ratio = float(observed_mask.mean().item()) if observed_mask.numel() > 0 else 0.0
+            missing_ratio = 1.0 - valid_ratio
+            if missing_ratio > max_missing_ratio:
+                return False
+        return True
+
+    def __len__(self) -> int:
+        return len(self.samples)
+
+    def __getitem__(self, idx: int) -> Dict[str, Any]:
+        return self.samples[idx]
 
 
 def set_seed(seed: int) -> None:
@@ -154,16 +211,42 @@ def train(args: argparse.Namespace) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
 
-    train_dataset = build_dataset(args, args.train_split)
-    print(f"Train windows: {len(train_dataset)}")
+    train_base = build_dataset(args, args.train_split)
+    val_base = build_dataset(args, args.val_split)
+    print(f"Raw windows | train: {len(train_base)} | val: {len(val_base)}")
 
-    loader = DataLoader(
+    required_modalities = ["heart_rate", "calorie", "physical_activity", "respiratory_rate"]
+    train_dataset = MultiModalFilteredContainer(
+        base_dataset=train_base,
+        max_missing_ratio=args.max_missing_ratio,
+        required_modalities=required_modalities,
+    )
+    val_dataset = MultiModalFilteredContainer(
+        base_dataset=val_base,
+        max_missing_ratio=args.max_missing_ratio,
+        required_modalities=required_modalities,
+    )
+    print(
+        f"Filtered windows | train: {len(train_dataset)}/{train_dataset.total_seen} | "
+        f"val: {len(val_dataset)}/{val_dataset.total_seen} | "
+        f"max_missing_ratio={args.max_missing_ratio:.2f}"
+    )
+
+    train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
         num_workers=args.num_workers,
         pin_memory=True,
         drop_last=True,
+    )
+    val_loader = DataLoader(
+        val_dataset,
+        batch_size=args.batch_size,
+        shuffle=False,
+        num_workers=args.num_workers,
+        pin_memory=True,
+        drop_last=False,
     )
 
     model_args = build_model_args(args)
@@ -174,36 +257,41 @@ def train(args: argparse.Namespace) -> None:
         model.parameters(),
         lr=args.lr,
         weight_decay=args.weight_decay,
-        betas=(0.9, 0.95),
     )
 
-    scaler = torch.amp.GradScaler("cuda", enabled=(device.type == "cuda" and args.amp))
     delay_embedder = DelayEmbedder(device=device, seq_len=args.ts_seq_len, delay=args.ts_delay, embedding=args.ts_embedding)
 
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
+    wb = None
+    if args.wandb:
+        if wandb is None:
+            raise ImportError("wandb is not installed. Please install wandb or run without --wandb.")
+        wb = wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_run_name,
+            config=vars(args),
+            dir=str(output_dir),
+        )
 
     global_step = 0
+    best_val_loss = float("inf")
     for epoch in range(args.epochs):
         model.train()
         epoch_loss = 0.0
         n_steps = 0
 
-        for batch in loader:
+        for batch in train_loader:
             inputs = batch_to_model_inputs(batch, delay_embedder, args.num_classes, device)
             if not inputs:
                 continue
 
             optimizer.zero_grad(set_to_none=True)
-            with torch.autocast(device_type=device.type, dtype=torch.float16, enabled=(device.type == "cuda" and args.amp)):
-                loss = model(**inputs)
-
-            scaler.scale(loss).backward()
+            loss = model(**inputs)
+            loss.backward()
             if args.grad_clip > 0:
-                scaler.unscale_(optimizer)
                 torch.nn.utils.clip_grad_norm_(model.parameters(), args.grad_clip)
-            scaler.step(optimizer)
-            scaler.update()
+            optimizer.step()
 
             loss_val = float(loss.item())
             epoch_loss += loss_val
@@ -212,9 +300,45 @@ def train(args: argparse.Namespace) -> None:
 
             if global_step % args.log_interval == 0:
                 print(f"Epoch {epoch + 1}/{args.epochs} | Step {global_step} | Loss {loss_val:.6f}")
+                if wb is not None:
+                    wandb.log(
+                        {
+                            "train/loss_step": loss_val,
+                            "train/lr": optimizer.param_groups[0]["lr"],
+                            "epoch": epoch + 1,
+                        },
+                        step=global_step,
+                    )
 
         avg_loss = epoch_loss / max(1, n_steps)
-        print(f"Epoch {epoch + 1} done | avg_loss={avg_loss:.6f} | steps={n_steps}")
+        model.eval()
+        val_loss_sum = 0.0
+        val_steps = 0
+        with torch.no_grad():
+            for batch in val_loader:
+                inputs = batch_to_model_inputs(batch, delay_embedder, args.num_classes, device)
+                if not inputs:
+                    continue
+                val_loss = model(**inputs)
+                val_loss_sum += float(val_loss.item())
+                val_steps += 1
+        avg_val_loss = val_loss_sum / max(1, val_steps)
+        best_val_loss = min(best_val_loss, avg_val_loss)
+
+        print(
+            f"Epoch {epoch + 1} done | train_loss={avg_loss:.6f} | "
+            f"val_loss={avg_val_loss:.6f} | best_val={best_val_loss:.6f} | steps={n_steps}"
+        )
+        if wb is not None:
+            wandb.log(
+                {
+                    "train/loss_epoch": avg_loss,
+                    "val/loss_epoch": avg_val_loss,
+                    "val/best_loss": best_val_loss,
+                    "epoch": epoch + 1,
+                },
+                step=global_step,
+            )
 
         if (epoch + 1) % args.save_interval == 0:
             ckpt_path = output_dir / f"checkpoint_epoch{epoch + 1}.pt"
@@ -224,6 +348,7 @@ def train(args: argparse.Namespace) -> None:
                     "optimizer": optimizer.state_dict(),
                     "epoch": epoch,
                     "step": global_step,
+                    "best_val_loss": best_val_loss,
                     "args": vars(args),
                 },
                 ckpt_path,
@@ -237,11 +362,14 @@ def train(args: argparse.Namespace) -> None:
             "optimizer": optimizer.state_dict(),
             "epoch": args.epochs - 1,
             "step": global_step,
+            "best_val_loss": best_val_loss,
             "args": vars(args),
         },
         final_path,
     )
     print(f"Training complete. Final checkpoint: {final_path}")
+    if wb is not None:
+        wb.finish()
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -250,6 +378,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--data_root", type=str, default="./AI-READI")
     parser.add_argument("--participants_tsv_path", type=str, default=None)
     parser.add_argument("--train_split", type=str, default="train", choices=["train", "valid", "test"])
+    parser.add_argument("--val_split", type=str, default="valid", choices=["train", "valid", "test"])
     parser.add_argument("--output_dir", type=str, default="./outputs/multimodal_jit")
 
     parser.add_argument("--epochs", type=int, default=100)
@@ -260,7 +389,6 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--lr", type=float, default=1e-4)
     parser.add_argument("--weight_decay", type=float, default=5e-2)
     parser.add_argument("--grad_clip", type=float, default=1.0)
-    parser.add_argument("--amp", action="store_true")
     parser.add_argument("--log_interval", type=int, default=20)
     parser.add_argument("--save_interval", type=int, default=10)
 
@@ -307,10 +435,14 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ts_embedding", type=int, default=32)
     parser.add_argument("--window_mode", type=str, default="daily", choices=["daily", "sliding"])
     parser.add_argument("--daily_min_events", type=int, default=288)
+    parser.add_argument("--max_missing_ratio", type=float, default=0.8)
     parser.add_argument("--max_anchor_gap_minutes", type=float, default=30.0)
     parser.add_argument("--max_window_span_hours", type=float, default=24.0)
     parser.add_argument("--anchor_sampling_minutes", type=float, default=5.0)
     parser.add_argument("--anchor_sampling_tolerance_seconds", type=float, default=120.0)
+    parser.add_argument("--wandb", action="store_true")
+    parser.add_argument("--wandb_project", type=str, default="drifting-model")
+    parser.add_argument("--wandb_run_name", type=str, default=None)
 
     return parser
 
