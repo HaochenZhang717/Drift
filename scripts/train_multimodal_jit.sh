@@ -106,7 +106,7 @@ python train_multimodal_jit.py \
     --window_mode daily \
     --daily_min_events 288 \
     \
-    --max_missing_ratio 0.8 \
+    --max_missing_ratio 0.5 \
     \
     --max_anchor_gap_minutes 10 \
     --max_window_span_hours 24 \
