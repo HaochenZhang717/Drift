@@ -10,7 +10,7 @@ PARTICIPANTS_TSV=/playpen-shared/mshuang/morris/morris/d9ef6cf1-f6c3-4956-a91e-a
 
 MM_CKPT_DIR=/playpen-shared/haochenz/Drift/outputs/multimodal_jit_v1
 CLF_CKPT=/playpen-shared/haochenz/Drift/outputs/aireadi_eval_classifier/best_classifier.pt
-OUTPUT_DIR=/playpen-shared/haochenz/Drift/outputs/aireadi_eval_classifier/mm_ckpt_sweep
+OUTPUT_DIR=/mnt/unites8/playpen/haochenz/Drift/outputs/aireadi_eval_classifier/mm_ckpt_sweep
 
 mkdir -p "${OUTPUT_DIR}"
 
