@@ -156,7 +156,7 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --latent_downsample 16 \
     --decoder_upsample_rate 4 \
     --dropout 0.1 \
-    --beta 0.1 \
+    --beta 0.01 \
     \
     --save_dir ./fid_vae_ckpts/benchmark_ercot_${TSLEN} \
     --wandb \
