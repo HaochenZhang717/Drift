@@ -14,7 +14,9 @@ GEN_CKPT=/playpen-shared/haochenz/Drift/outputs/glucose_cls_cond_no_cfg/aireadi_
 # Trained evaluator classifier checkpoint
 CLF_CKPT=/playpen-shared/haochenz/Drift/outputs/aireadi_eval_classifier/best_classifier.pt
 
-OUTPUT_DIR=./outputs/aireadi_eval_classifier
+#OUTPUT_DIR=./outputs/aireadi_eval_classifier
+OUTPUT_DIR=/mnt/unites8/playpen/haochenz/Drift/outputs/aireadi_eval_classifier/cls_cond_drift_ckpt
+
 
 python eval_classifier_generated_vs_real.py \
     --data_root ${DATA_ROOT} \
