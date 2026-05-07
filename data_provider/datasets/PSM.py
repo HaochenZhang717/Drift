@@ -20,15 +20,16 @@ class PSMSegLoader(Dataset):
         data = pd.read_csv(os.path.join(root_path, 'train.csv'))
         data = data.values[:, 1:]
         data = np.nan_to_num(data)
-        self.scaler.fit(data)
+        data_len = len(data)
+        train_end = int(data_len * 0.8)
+        self.scaler.fit(data[:train_end])
         data = self.scaler.transform(data)
         test_data = pd.read_csv(os.path.join(root_path, 'test.csv'))
         test_data = test_data.values[:, 1:]
         test_data = np.nan_to_num(test_data)
         self.test = self.scaler.transform(test_data)
-        self.train = data
-        data_len = len(self.train)
-        self.val = self.train[(int)(data_len * 0.8):]
+        self.train = data[:train_end]
+        self.val = data[train_end:]
         self.test_labels = pd.read_csv(os.path.join(
             root_path, 'test_label.csv')).values[:, 1:]
 

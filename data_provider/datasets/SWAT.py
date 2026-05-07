@@ -24,13 +24,14 @@ class SWATSegLoader(Dataset):
         train_data = train_data.values[:, :-1]
         test_data = test_data.values[:, :-1]
 
-        self.scaler.fit(train_data)
+        data_len = len(train_data)
+        train_end = int(data_len * 0.8)
+        self.scaler.fit(train_data[:train_end])
         train_data = self.scaler.transform(train_data)
         test_data = self.scaler.transform(test_data)
-        self.train = train_data
+        self.train = train_data[:train_end]
+        self.val = train_data[train_end:]
         self.test = test_data
-        data_len = len(self.train)
-        self.val = self.train[(int)(data_len * 0.8):]
         self.test_labels = labels
         # print("test:", self.test.shape)
         # print("train:", self.train.shape)

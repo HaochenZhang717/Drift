@@ -51,10 +51,10 @@ class Dataset_ETT_hour(Dataset):
         df_raw = pd.read_csv(os.path.join(self.root_path,
                                           self.data_path))
 
-        border1s = [0, 12 * 30 * 24 - self.seq_len,
-                    12 * 30 * 24 + 4 * 30 * 24 - self.seq_len]
-        border2s = [12 * 30 * 24, 12 * 30 * 24 +
-                    4 * 30 * 24, 12 * 30 * 24 + 8 * 30 * 24]
+        num_train = int(len(df_raw) * 0.8)
+        valid_start = num_train
+        border1s = [0, valid_start, valid_start]
+        border2s = [num_train, len(df_raw), len(df_raw)]
         border1 = border1s[self.set_type]
         border2 = border2s[self.set_type]
 

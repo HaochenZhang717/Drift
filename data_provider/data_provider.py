@@ -1,6 +1,6 @@
-from data_provider.datasets import ETTh, ETTm, Custom, UEA, GLUONTS, Sine, Stock, Energy, Mujoco, PSM, MSL, SMAP, SMD, SWAT, AirQuality, AIREADI, AIREADICalorie, AIREADIGlucose, VerbalTS, NpyTimeSeries
+from data_provider.datasets import ETTh, ETTm, Custom, UEA, GLUONTS, Sine, Stock, Energy, Mujoco, PSM, MSL, SMAP, SMD, SWAT, AirQuality, AIREADI, AIREADICalorie, AIREADIGlucose, VerbalTS, NpyTimeSeries, ErcotData, HouseholdData, GlucoseSliding
 from torch.utils.data.distributed import DistributedSampler
-from torch.utils.data import DataLoader, Dataset, Subset, TensorDataset
+from torch.utils.data import DataLoader, Dataset, TensorDataset
 from .multi_dataloader_iter import MultiDataloaderIter
 import functools
 import torch
@@ -177,40 +177,10 @@ data_dict = {
     'AIREADIGlucose': AIREADIGlucose,
     'verbal_ts': VerbalTS,
     'npy_ts': NpyTimeSeries,
+    'ErcotData': ErcotData,
+    'HouseholdData': HouseholdData,
+    'GlucoseSliding': GlucoseSliding,
 }
-
-def random_permute(trainset, testset):
-    perm_train = torch.randperm(len(trainset), generator=torch.Generator().manual_seed(0)).numpy()
-    perm_test = torch.randperm(len(testset), generator=torch.Generator().manual_seed(0)).numpy()
-
-    return Subset(trainset, perm_train), Subset(testset, perm_test)
-
-def random_subset(dataset, subset_p=None, subset_n=None):
-    num_samples = len(dataset)
-    if subset_n is not None:
-        num_samples = subset_n
-    if subset_p is not None:
-        num_samples = int(num_samples * subset_p)
-    indices = torch.arange(0, num_samples, dtype=int) % len(dataset)
-    return Subset(dataset, indices)
-
-
-def _has_effective_subset(subset_p=None, subset_n=None, dataset_len=None):
-    if subset_n is not None:
-        return dataset_len is None or int(subset_n) < int(dataset_len)
-    if subset_p is not None:
-        return float(subset_p) < 1.0
-    return False
-
-
-def _resolve_subset_indices(dataset):
-    if isinstance(dataset, Subset):
-        indices = np.asarray(dataset.indices)
-        parent_indices = _resolve_subset_indices(dataset.dataset)
-        if parent_indices is None:
-            return indices
-        return np.asarray(parent_indices)[indices]
-    return None
 
 def data_provider(args):
 
@@ -229,22 +199,15 @@ def data_provider(args):
         config['seq_len'] = args.seq_len
         config['datasets_dir'] = args.datasets_dir
         trainset, testset = get_train(config), get_test(config)
-        subset_p = getattr(args,'subset_p', None)
-        subset_n = getattr(args,'subset_n', None)
-
-        # Randomly permute train/testsets
-        trainset, testset = random_permute(trainset, testset)
-        if _has_effective_subset(subset_p, subset_n, len(trainset)) and (not 'subset_n' in config.keys()):
-            trainset, testset = random_subset(trainset, subset_p, subset_n), trainset
-        args._verbalts_index_order[(config["name"], "train")] = _resolve_subset_indices(trainset)
-        args._verbalts_index_order[(config["name"], "test")] = _resolve_subset_indices(testset)
+        args._verbalts_index_order[(config["name"], "train")] = None
+        args._verbalts_index_order[(config["name"], "valid")] = None
         trainset, testset = dataset_to_tensor(trainset, args), dataset_to_tensor(testset, args)
         if _should_load_verbalts_tokens(args, config):
             trainset = _attach_verbalts_tokens(args, config, "train", trainset)
-            testset = _attach_verbalts_tokens(args, config, "test", testset)
+            testset = _attach_verbalts_tokens(args, config, "valid", testset)
         else:
             trainset = _attach_verbalts_context(args, config, "train", trainset)
-            testset = _attach_verbalts_context(args, config, "test", testset)
+            testset = _attach_verbalts_context(args, config, "valid", testset)
 
         caption_embeddings_path = getattr(args, "caption_embeddings_path", None)
         if caption_embeddings_path and config["name"] in args.train_on_datasets:
@@ -273,7 +236,7 @@ def data_provider(args):
             if train_seq_tensor.size(1) != args.seq_len:
                 train_seq_tensor = torch.nn.functional.pad(train_seq_tensor, (0, 0, 0, args.seq_len - train_seq_tensor.size(1)))
                 trainset = _replace_primary_tensor(trainset, train_seq_tensor)
-        print(f"{config['name']} Contains: {len(trainset)} train datapoints; {len(testset)} test datapoints;")
+        print(f"{config['name']} Contains: {len(trainset)} train datapoints; {len(testset)} valid datapoints;")
 
         metadata['name'] = config['name']
         metadata['channels'] = _get_primary_tensor(trainset).size(-1)
@@ -316,15 +279,13 @@ def get_train(config):
     if Data is None:
         raise ImportError(f"Dataset backend '{config['data']}' is unavailable because its optional dependency is not installed.")
     config['flag'] = 'train'
-    if 'subset_n' in config.keys():
-        return Subset(Data(**config), torch.arange(config['subset_n']))
     return Data(**config)
 
 def get_test(config):
     Data = data_dict[config['data']]
     if Data is None:
         raise ImportError(f"Dataset backend '{config['data']}' is unavailable because its optional dependency is not installed.")
-    config['flag'] = 'test'
+    config['flag'] = 'val'
     return Data(**config)
 
 def dataset_to_tensor(dataset, args):

@@ -18,6 +18,8 @@ from .air_quality import AirQuality
 from .aireadi import AIREADI, AIREADICalorie, AIREADIGlucose
 from .verbal_ts import VerbalTS
 from .npy_ts import NpyTimeSeries
+from .local_timeseries import ErcotData, HouseholdData
+from .glucose_sliding import GlucoseSliding, GlucoseSlidingWindowTensorDataset
 
 from .MSL import MSL
 from .PSM import PSM

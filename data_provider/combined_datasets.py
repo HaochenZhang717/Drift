@@ -45,6 +45,9 @@ dataset_list = [
             "synthetic_m",
             "istanbul_traffic",
             "BlindWays",
+            "ErcotData",
+            "HouseholdData",
+            "GlucoseSliding",
         ]
 
 def get_pretrained_datasets_names():

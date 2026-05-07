@@ -1,0 +1,16 @@
+\begin{table}[t]
+\centering
+\caption{Accuracy and Macro-F1 comparison between baseline and selected MM checkpoints.}
+\begin{tabular}{lccccc}
+\toprule
+Setting & Epoch & EMA & Generated Acc & Generated Macro-F1 & Gap (Acc / F1) \\
+\midrule
+Baseline & - & - & 0.3309 $\pm$ 0.0052 & 0.2834 $\pm$ 0.0059 & -0.1155 $\pm$ 0.0052 / -0.0827 $\pm$ 0.0065 \\
+Best Generated Acc (MM) & 600 & 2 & 0.5029 $\pm$ 0.0049 & 0.4688 $\pm$ 0.0044 & 0.0565 $\pm$ 0.0038 / 0.1027 $\pm$ 0.0036 \\
+Best Generated Macro-F1 (MM) & 600 & 2 & 0.5029 $\pm$ 0.0049 & 0.4688 $\pm$ 0.0044 & 0.0565 $\pm$ 0.0038 / 0.1027 $\pm$ 0.0036 \\
+Largest Acc Gap (MM) & 600 & 2 & 0.5029 $\pm$ 0.0049 & 0.4688 $\pm$ 0.0044 & 0.0565 $\pm$ 0.0038 / 0.1027 $\pm$ 0.0036 \\
+Largest Macro-F1 Gap (MM) & 600 & 2 & 0.5029 $\pm$ 0.0049 & 0.4688 $\pm$ 0.0044 & 0.0565 $\pm$ 0.0038 / 0.1027 $\pm$ 0.0036 \\
+\bottomrule
+\end{tabular}
+\label{tab:mm_baseline_summary}
+\end{table}

@@ -17,13 +17,14 @@ class SMDSegLoader(Dataset):
         self.win_size = win_size
         self.scaler = StandardScaler()
         data = np.load(os.path.join(root_path, "SMD_train.npy"))
-        self.scaler.fit(data)
+        data_len = len(data)
+        train_end = int(data_len * 0.8)
+        self.scaler.fit(data[:train_end])
         data = self.scaler.transform(data)
         test_data = np.load(os.path.join(root_path, "SMD_test.npy"))
         self.test = self.scaler.transform(test_data)
-        self.train = data
-        data_len = len(self.train)
-        self.val = self.train[(int)(data_len * 0.8):]
+        self.train = data[:train_end]
+        self.val = data[train_end:]
         self.test_labels = np.load(
             os.path.join(root_path, "SMD_test_label.npy"))
 

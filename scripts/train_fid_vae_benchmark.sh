@@ -116,12 +116,52 @@
 
 
 
-python train_fid_vae_benchmark.py \
-  --dataset_name "mujoco" \
-  --data "mujoco" \
-  --datasets_dir "/playpen-shared/haochenz/ImagenFew/data" \
-  --rel_path "./TSG/mujoco0.0" \
-  --ts_seq_len 256 \
-  --batch_size 128 \
-  --epochs 100 \
-  --save_dir ./fid_vae_ckpts/benchmark_256 \
+#python train_fid_vae_benchmark.py \
+#  --dataset_name "mujoco" \
+#  --data "mujoco" \
+#  --datasets_dir "/playpen-shared/haochenz/ImagenFew/data" \
+#  --rel_path "./TSG/mujoco0.0" \
+#  --ts_seq_len 256 \
+#  --batch_size 128 \
+#  --epochs 100 \
+#  --save_dir ./fid_vae_ckpts/benchmark_256 \
+
+
+
+#!/bin/bash
+
+TS_LENGTHS=(64 128 256 512)
+
+for TSLEN in "${TS_LENGTHS[@]}"; do
+
+  echo "========================================"
+  echo "Running ERCOT with TSLEN=${TSLEN}"
+  echo "========================================"
+
+  python train_fid_vae_benchmark.py \
+    --dataset_name "ErcotData" \
+    --data "ErcotData" \
+    --datasets_dir "/mnt/unites8/playpen/haochenz/Time_Series_Datasets" \
+    --rel_path "ERCOT_merged.csv" \
+    --ts_seq_len ${TSLEN} \
+    --batch_size 128 \
+    --epochs 100 \
+    --save_dir ./fid_vae_ckpts/benchmark_ercot_${TSLEN}
+
+  echo "========================================"
+  echo "Running Household with TSLEN=${TSLEN}"
+  echo "========================================"
+
+  python train_fid_vae_benchmark.py \
+    --dataset_name "HouseholdData" \
+    --data "HouseholdData" \
+    --datasets_dir "/mnt/unites8/playpen/haochenz/Time_Series_Datasets" \
+    --rel_path "HouseHold_6.csv" \
+    --ts_seq_len ${TSLEN} \
+    --batch_size 128 \
+    --epochs 100 \
+    --save_dir ./fid_vae_ckpts/benchmark_household_${TSLEN}
+
+done
+
+

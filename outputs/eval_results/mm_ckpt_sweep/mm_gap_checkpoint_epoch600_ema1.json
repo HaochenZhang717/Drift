@@ -1,0 +1,1711 @@
+{
+  "settings": {
+    "mm_ckpt_path": "/playpen-shared/haochenz/Drift/outputs/multimodal_jit_v1/checkpoint_epoch600.pt",
+    "mm_weights": "ema1",
+    "clf_ckpt_path": "/playpen-shared/haochenz/Drift/outputs/aireadi_eval_classifier/best_classifier.pt",
+    "real_split": "test",
+    "samples_per_class": 560,
+    "num_classes": 4,
+    "window_mode": "daily",
+    "daily_min_events": 288,
+    "sampling_method": "heun",
+    "num_sampling_steps": 50,
+    "noise_scale": 1.0,
+    "num_repeats": 10,
+    "seed": 42
+  },
+  "repeats": [
+    {
+      "repeat_idx": 0,
+      "seed": 42,
+      "samples_per_class": 560,
+      "real": {
+        "n": 2240,
+        "acc": 0.4468750059604645,
+        "macro_precision": 0.46023368171666823,
+        "macro_recall": 0.446875,
+        "macro_f1": 0.366553124007278,
+        "per_class": {
+          "healthy": {
+            "precision": 0.4652128764278297,
+            "recall": 0.8,
+            "f1": 0.5883125410374261,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.25,
+            "recall": 0.007142857142857143,
+            "f1": 0.01388888888888889,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.3856088560885609,
+            "recall": 0.7464285714285714,
+            "f1": 0.5085158150851581,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.7401129943502824,
+            "recall": 0.23392857142857143,
+            "f1": 0.355495251017639,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            448,
+            6,
+            105,
+            1
+          ],
+          [
+            359,
+            4,
+            183,
+            14
+          ],
+          [
+            107,
+            4,
+            418,
+            31
+          ],
+          [
+            49,
+            2,
+            378,
+            131
+          ]
+        ],
+        "pred_distribution": [
+          0.42991071939468384,
+          0.0071428571827709675,
+          0.4839285612106323,
+          0.07901785522699356
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 0.8761351704597473,
+        "tv_true_vs_pred": 0.41383928060531616,
+        "avg_confidence": 0.5368608832359314
+      },
+      "generated": {
+        "n": 2240,
+        "acc": 0.3348214328289032,
+        "macro_precision": 0.48626794905247145,
+        "macro_recall": 0.3348214285714286,
+        "macro_f1": 0.2531603332391651,
+        "per_class": {
+          "healthy": {
+            "precision": 0.6468085106382979,
+            "recall": 0.2714285714285714,
+            "f1": 0.3823899371069182,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.4444444444444444,
+            "recall": 0.007142857142857143,
+            "f1": 0.014059753954305799,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.28239026969857217,
+            "recall": 0.9535714285714286,
+            "f1": 0.43574051407588743,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.5714285714285714,
+            "recall": 0.10714285714285714,
+            "f1": 0.18045112781954886,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            152,
+            5,
+            399,
+            4
+          ],
+          [
+            83,
+            4,
+            458,
+            15
+          ],
+          [
+            0,
+            0,
+            534,
+            26
+          ],
+          [
+            0,
+            0,
+            500,
+            60
+          ]
+        ],
+        "pred_distribution": [
+          0.1049107164144516,
+          0.004017857369035482,
+          0.8441964387893677,
+          0.046875
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 1.3640280961990356,
+        "tv_true_vs_pred": 0.5941964387893677,
+        "avg_confidence": 0.5410272479057312
+      },
+      "gap": {
+        "delta_acc_gen_minus_real": -0.11205357313156128,
+        "delta_macro_f1_gen_minus_real": -0.11339279076811293,
+        "delta_macro_recall_gen_minus_real": -0.11205357142857142,
+        "delta_avg_confidence_gen_minus_real": 0.004166364669799805,
+        "delta_kl_true_vs_pred_gen_minus_real": 0.48789292573928833,
+        "delta_tv_true_vs_pred_gen_minus_real": 0.1803571581840515
+      }
+    },
+    {
+      "repeat_idx": 1,
+      "seed": 43,
+      "samples_per_class": 560,
+      "real": {
+        "n": 2240,
+        "acc": 0.44285714626312256,
+        "macro_precision": 0.45130674555166383,
+        "macro_recall": 0.4428571428571429,
+        "macro_f1": 0.363960908780839,
+        "per_class": {
+          "healthy": {
+            "precision": 0.4687830687830688,
+            "recall": 0.7910714285714285,
+            "f1": 0.5887043189368771,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.23529411764705882,
+            "recall": 0.007142857142857143,
+            "f1": 0.01386481802426343,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.37739288969917956,
+            "recall": 0.7392857142857143,
+            "f1": 0.4996982498491249,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.7237569060773481,
+            "recall": 0.23392857142857143,
+            "f1": 0.35357624831309037,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            443,
+            5,
+            110,
+            2
+          ],
+          [
+            343,
+            4,
+            195,
+            18
+          ],
+          [
+            110,
+            6,
+            414,
+            30
+          ],
+          [
+            49,
+            2,
+            378,
+            131
+          ]
+        ],
+        "pred_distribution": [
+          0.421875,
+          0.0075892857275903225,
+          0.48973214626312256,
+          0.08080357313156128
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 0.8571289777755737,
+        "tv_true_vs_pred": 0.41160714626312256,
+        "avg_confidence": 0.5359552502632141
+      },
+      "generated": {
+        "n": 2240,
+        "acc": 0.3433035612106323,
+        "macro_precision": 0.503798047998675,
+        "macro_recall": 0.34330357142857143,
+        "macro_f1": 0.2629301646825834,
+        "per_class": {
+          "healthy": {
+            "precision": 0.6694214876033058,
+            "recall": 0.2892857142857143,
+            "f1": 0.40399002493765584,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.4444444444444444,
+            "recall": 0.007142857142857143,
+            "f1": 0.014059753954305799,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.28594164456233423,
+            "recall": 0.9625,
+            "f1": 0.4408997955010225,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.6153846153846154,
+            "recall": 0.11428571428571428,
+            "f1": 0.19277108433734938,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            162,
+            5,
+            383,
+            10
+          ],
+          [
+            79,
+            4,
+            467,
+            10
+          ],
+          [
+            1,
+            0,
+            539,
+            20
+          ],
+          [
+            0,
+            0,
+            496,
+            64
+          ]
+        ],
+        "pred_distribution": [
+          0.10803571343421936,
+          0.004017857369035482,
+          0.8415178656578064,
+          0.04642857238650322
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 1.3598768711090088,
+        "tv_true_vs_pred": 0.5915178656578064,
+        "avg_confidence": 0.540988028049469
+      },
+      "gap": {
+        "delta_acc_gen_minus_real": -0.09955358505249023,
+        "delta_macro_f1_gen_minus_real": -0.10103074409825558,
+        "delta_macro_recall_gen_minus_real": -0.09955357142857146,
+        "delta_avg_confidence_gen_minus_real": 0.005032777786254883,
+        "delta_kl_true_vs_pred_gen_minus_real": 0.5027478933334351,
+        "delta_tv_true_vs_pred_gen_minus_real": 0.17991071939468384
+      }
+    },
+    {
+      "repeat_idx": 2,
+      "seed": 44,
+      "samples_per_class": 560,
+      "real": {
+        "n": 2240,
+        "acc": 0.4459821581840515,
+        "macro_precision": 0.4459391881305842,
+        "macro_recall": 0.4459821428571429,
+        "macro_f1": 0.3654629583812198,
+        "per_class": {
+          "healthy": {
+            "precision": 0.4705263157894737,
+            "recall": 0.7982142857142858,
+            "f1": 0.5920529801324503,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.2,
+            "recall": 0.005357142857142857,
+            "f1": 0.010434782608695651,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.3813868613138686,
+            "recall": 0.7464285714285714,
+            "f1": 0.5048309178743962,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.7318435754189944,
+            "recall": 0.23392857142857143,
+            "f1": 0.35453315290933696,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            447,
+            6,
+            105,
+            2
+          ],
+          [
+            346,
+            3,
+            195,
+            16
+          ],
+          [
+            108,
+            4,
+            418,
+            30
+          ],
+          [
+            49,
+            2,
+            378,
+            131
+          ]
+        ],
+        "pred_distribution": [
+          0.4241071343421936,
+          0.0066964286379516125,
+          0.4892857074737549,
+          0.07991071790456772
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 0.8901063203811646,
+        "tv_true_vs_pred": 0.4133928418159485,
+        "avg_confidence": 0.5377597212791443
+      },
+      "generated": {
+        "n": 2240,
+        "acc": 0.3370535671710968,
+        "macro_precision": 0.5164510327863292,
+        "macro_recall": 0.33705357142857145,
+        "macro_f1": 0.2594235803600491,
+        "per_class": {
+          "healthy": {
+            "precision": 0.6977777777777778,
+            "recall": 0.28035714285714286,
+            "f1": 0.4,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.5,
+            "recall": 0.008928571428571428,
+            "f1": 0.017543859649122806,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.2792413066385669,
+            "recall": 0.9464285714285714,
+            "f1": 0.43124491456468667,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.5887850467289719,
+            "recall": 0.1125,
+            "f1": 0.1889055472263868,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            157,
+            5,
+            395,
+            3
+          ],
+          [
+            66,
+            5,
+            476,
+            13
+          ],
+          [
+            2,
+            0,
+            530,
+            28
+          ],
+          [
+            0,
+            0,
+            497,
+            63
+          ]
+        ],
+        "pred_distribution": [
+          0.1004464253783226,
+          0.004464285913854837,
+          0.8473214507102966,
+          0.04776785895228386
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 1.3429186344146729,
+        "tv_true_vs_pred": 0.5973213911056519,
+        "avg_confidence": 0.5398752689361572
+      },
+      "gap": {
+        "delta_acc_gen_minus_real": -0.10892859101295471,
+        "delta_macro_f1_gen_minus_real": -0.1060393780211707,
+        "delta_macro_recall_gen_minus_real": -0.10892857142857143,
+        "delta_avg_confidence_gen_minus_real": 0.0021155476570129395,
+        "delta_kl_true_vs_pred_gen_minus_real": 0.4528123140335083,
+        "delta_tv_true_vs_pred_gen_minus_real": 0.18392854928970337
+      }
+    },
+    {
+      "repeat_idx": 3,
+      "seed": 45,
+      "samples_per_class": 560,
+      "real": {
+        "n": 2240,
+        "acc": 0.44955357909202576,
+        "macro_precision": 0.4530995479266394,
+        "macro_recall": 0.44955357142857144,
+        "macro_f1": 0.3678945609449005,
+        "per_class": {
+          "healthy": {
+            "precision": 0.4716981132075472,
+            "recall": 0.8035714285714286,
+            "f1": 0.5944517833553501,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.21428571428571427,
+            "recall": 0.005357142857142857,
+            "f1": 0.010452961672473867,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.3863013698630137,
+            "recall": 0.7553571428571428,
+            "f1": 0.5111782477341389,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.7401129943502824,
+            "recall": 0.23392857142857143,
+            "f1": 0.355495251017639,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            450,
+            4,
+            103,
+            3
+          ],
+          [
+            350,
+            3,
+            191,
+            16
+          ],
+          [
+            105,
+            5,
+            423,
+            27
+          ],
+          [
+            49,
+            2,
+            378,
+            131
+          ]
+        ],
+        "pred_distribution": [
+          0.4258928596973419,
+          0.0062500000931322575,
+          0.4888392984867096,
+          0.07901785522699356
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 0.9093412160873413,
+        "tv_true_vs_pred": 0.4147321581840515,
+        "avg_confidence": 0.5386718511581421
+      },
+      "generated": {
+        "n": 2240,
+        "acc": 0.33616071939468384,
+        "macro_precision": 0.525325939216871,
+        "macro_recall": 0.33616071428571426,
+        "macro_f1": 0.2522624686463556,
+        "per_class": {
+          "healthy": {
+            "precision": 0.6437246963562753,
+            "recall": 0.2839285714285714,
+            "f1": 0.3940520446096654,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.6153846153846154,
+            "recall": 0.014285714285714285,
+            "f1": 0.027923211169284468,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.2840549102428722,
+            "recall": 0.9607142857142857,
+            "f1": 0.4384678076609618,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.5581395348837209,
+            "recall": 0.08571428571428572,
+            "f1": 0.14860681114551083,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            159,
+            5,
+            385,
+            11
+          ],
+          [
+            85,
+            8,
+            460,
+            7
+          ],
+          [
+            2,
+            0,
+            538,
+            20
+          ],
+          [
+            1,
+            0,
+            511,
+            48
+          ]
+        ],
+        "pred_distribution": [
+          0.11026785522699356,
+          0.0058035715483129025,
+          0.8455356955528259,
+          0.03839285671710968
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 1.3091535568237305,
+        "tv_true_vs_pred": 0.5955357551574707,
+        "avg_confidence": 0.5410659909248352
+      },
+      "gap": {
+        "delta_acc_gen_minus_real": -0.11339285969734192,
+        "delta_macro_f1_gen_minus_real": -0.11563209229854488,
+        "delta_macro_recall_gen_minus_real": -0.11339285714285718,
+        "delta_avg_confidence_gen_minus_real": 0.0023941397666931152,
+        "delta_kl_true_vs_pred_gen_minus_real": 0.39981234073638916,
+        "delta_tv_true_vs_pred_gen_minus_real": 0.1808035969734192
+      }
+    },
+    {
+      "repeat_idx": 4,
+      "seed": 46,
+      "samples_per_class": 560,
+      "real": {
+        "n": 2240,
+        "acc": 0.44999998807907104,
+        "macro_precision": 0.4485843058121506,
+        "macro_recall": 0.45,
+        "macro_f1": 0.368068362036657,
+        "per_class": {
+          "healthy": {
+            "precision": 0.46949327817993797,
+            "recall": 0.8107142857142857,
+            "f1": 0.5946299934512115,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.2,
+            "recall": 0.005357142857142857,
+            "f1": 0.010434782608695651,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.3888888888888889,
+            "recall": 0.75,
+            "f1": 0.5121951219512195,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.7359550561797753,
+            "recall": 0.23392857142857143,
+            "f1": 0.35501355013550134,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            454,
+            5,
+            98,
+            3
+          ],
+          [
+            355,
+            3,
+            184,
+            18
+          ],
+          [
+            109,
+            5,
+            420,
+            26
+          ],
+          [
+            49,
+            2,
+            378,
+            131
+          ]
+        ],
+        "pred_distribution": [
+          0.43169641494750977,
+          0.0066964286379516125,
+          0.4821428656578064,
+          0.07946428656578064
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 0.8907493352890015,
+        "tv_true_vs_pred": 0.41383928060531616,
+        "avg_confidence": 0.5371415019035339
+      },
+      "generated": {
+        "n": 2240,
+        "acc": 0.33392858505249023,
+        "macro_precision": 0.4627892776660696,
+        "macro_recall": 0.3339285714285714,
+        "macro_f1": 0.25135189692111254,
+        "per_class": {
+          "healthy": {
+            "precision": 0.6693548387096774,
+            "recall": 0.29642857142857143,
+            "f1": 0.4108910891089109,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.42857142857142855,
+            "recall": 0.005357142857142857,
+            "f1": 0.010582010582010581,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.28153273017562536,
+            "recall": 0.9446428571428571,
+            "f1": 0.43378433784337844,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.4716981132075472,
+            "recall": 0.08928571428571429,
+            "f1": 0.15015015015015015,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            166,
+            4,
+            380,
+            10
+          ],
+          [
+            78,
+            3,
+            460,
+            19
+          ],
+          [
+            4,
+            0,
+            529,
+            27
+          ],
+          [
+            0,
+            0,
+            510,
+            50
+          ]
+        ],
+        "pred_distribution": [
+          0.11071428656578064,
+          0.0031250000465661287,
+          0.8388392925262451,
+          0.04732142761349678
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 1.4126176834106445,
+        "tv_true_vs_pred": 0.5888392925262451,
+        "avg_confidence": 0.5389211177825928
+      },
+      "gap": {
+        "delta_acc_gen_minus_real": -0.11607140302658081,
+        "delta_macro_f1_gen_minus_real": -0.11671646511554445,
+        "delta_macro_recall_gen_minus_real": -0.1160714285714286,
+        "delta_avg_confidence_gen_minus_real": 0.0017796158790588379,
+        "delta_kl_true_vs_pred_gen_minus_real": 0.5218683481216431,
+        "delta_tv_true_vs_pred_gen_minus_real": 0.17500001192092896
+      }
+    },
+    {
+      "repeat_idx": 5,
+      "seed": 47,
+      "samples_per_class": 560,
+      "real": {
+        "n": 2240,
+        "acc": 0.4441964328289032,
+        "macro_precision": 0.4518000177697995,
+        "macro_recall": 0.4441964285714286,
+        "macro_f1": 0.3647858575091695,
+        "per_class": {
+          "healthy": {
+            "precision": 0.46855345911949686,
+            "recall": 0.7982142857142858,
+            "f1": 0.5904887714663145,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.23529411764705882,
+            "recall": 0.007142857142857143,
+            "f1": 0.01386481802426343,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.3795955882352941,
+            "recall": 0.7375,
+            "f1": 0.5012135922330097,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.7237569060773481,
+            "recall": 0.23392857142857143,
+            "f1": 0.35357624831309037,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            447,
+            5,
+            106,
+            2
+          ],
+          [
+            346,
+            4,
+            191,
+            19
+          ],
+          [
+            112,
+            6,
+            413,
+            29
+          ],
+          [
+            49,
+            2,
+            378,
+            131
+          ]
+        ],
+        "pred_distribution": [
+          0.4258928596973419,
+          0.0075892857275903225,
+          0.48571428656578064,
+          0.08080357313156128
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 0.8568187952041626,
+        "tv_true_vs_pred": 0.41160714626312256,
+        "avg_confidence": 0.5364924073219299
+      },
+      "generated": {
+        "n": 2240,
+        "acc": 0.3397321403026581,
+        "macro_precision": 0.4858574584511859,
+        "macro_recall": 0.33973214285714287,
+        "macro_f1": 0.2583482987185455,
+        "per_class": {
+          "healthy": {
+            "precision": 0.7017543859649122,
+            "recall": 0.2857142857142857,
+            "f1": 0.40609137055837563,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.4,
+            "recall": 0.007142857142857143,
+            "f1": 0.014035087719298246,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.2839831401475237,
+            "recall": 0.9625,
+            "f1": 0.4385679414157851,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.5576923076923077,
+            "recall": 0.10357142857142858,
+            "f1": 0.1746987951807229,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            160,
+            5,
+            388,
+            7
+          ],
+          [
+            68,
+            4,
+            469,
+            19
+          ],
+          [
+            0,
+            1,
+            539,
+            20
+          ],
+          [
+            0,
+            0,
+            502,
+            58
+          ]
+        ],
+        "pred_distribution": [
+          0.10178571194410324,
+          0.004464285913854837,
+          0.8473214507102966,
+          0.04642857238650322
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 1.3467167615890503,
+        "tv_true_vs_pred": 0.5973214507102966,
+        "avg_confidence": 0.5394887924194336
+      },
+      "gap": {
+        "delta_acc_gen_minus_real": -0.10446429252624512,
+        "delta_macro_f1_gen_minus_real": -0.106437558790624,
+        "delta_macro_recall_gen_minus_real": -0.10446428571428573,
+        "delta_avg_confidence_gen_minus_real": 0.002996385097503662,
+        "delta_kl_true_vs_pred_gen_minus_real": 0.4898979663848877,
+        "delta_tv_true_vs_pred_gen_minus_real": 0.18571430444717407
+      }
+    },
+    {
+      "repeat_idx": 6,
+      "seed": 48,
+      "samples_per_class": 560,
+      "real": {
+        "n": 2240,
+        "acc": 0.44508928060531616,
+        "macro_precision": 0.45505157123578177,
+        "macro_recall": 0.4450892857142857,
+        "macro_f1": 0.36533726435684544,
+        "per_class": {
+          "healthy": {
+            "precision": 0.4694736842105263,
+            "recall": 0.7964285714285714,
+            "f1": 0.590728476821192,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.25,
+            "recall": 0.007142857142857143,
+            "f1": 0.01388888888888889,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.38095238095238093,
+            "recall": 0.7428571428571429,
+            "f1": 0.5036319612590798,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.7197802197802198,
+            "recall": 0.23392857142857143,
+            "f1": 0.3530997304582211,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            446,
+            4,
+            107,
+            3
+          ],
+          [
+            347,
+            4,
+            191,
+            18
+          ],
+          [
+            108,
+            6,
+            416,
+            30
+          ],
+          [
+            49,
+            2,
+            378,
+            131
+          ]
+        ],
+        "pred_distribution": [
+          0.4241071343421936,
+          0.0071428571827709675,
+          0.48750001192092896,
+          0.08124999701976776
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 0.8707305192947388,
+        "tv_true_vs_pred": 0.41160714626312256,
+        "avg_confidence": 0.5371139645576477
+      },
+      "generated": {
+        "n": 2240,
+        "acc": 0.34241071343421936,
+        "macro_precision": 0.4805242157402311,
+        "macro_recall": 0.3424107142857143,
+        "macro_f1": 0.2600501794821952,
+        "per_class": {
+          "healthy": {
+            "precision": 0.6833333333333333,
+            "recall": 0.29285714285714287,
+            "f1": 0.41000000000000003,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.3333333333333333,
+            "recall": 0.007142857142857143,
+            "f1": 0.013986013986013986,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.2858649789029536,
+            "recall": 0.9678571428571429,
+            "f1": 0.44136807817589574,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.6195652173913043,
+            "recall": 0.10178571428571428,
+            "f1": 0.17484662576687116,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            164,
+            8,
+            381,
+            7
+          ],
+          [
+            76,
+            4,
+            470,
+            10
+          ],
+          [
+            0,
+            0,
+            542,
+            18
+          ],
+          [
+            0,
+            0,
+            503,
+            57
+          ]
+        ],
+        "pred_distribution": [
+          0.1071428582072258,
+          0.0053571430034935474,
+          0.8464285731315613,
+          0.04107142984867096
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 1.3192273378372192,
+        "tv_true_vs_pred": 0.5964285731315613,
+        "avg_confidence": 0.5436025261878967
+      },
+      "gap": {
+        "delta_acc_gen_minus_real": -0.1026785671710968,
+        "delta_macro_f1_gen_minus_real": -0.10528708487465022,
+        "delta_macro_recall_gen_minus_real": -0.1026785714285714,
+        "delta_avg_confidence_gen_minus_real": 0.0064885616302490234,
+        "delta_kl_true_vs_pred_gen_minus_real": 0.44849681854248047,
+        "delta_tv_true_vs_pred_gen_minus_real": 0.18482142686843872
+      }
+    },
+    {
+      "repeat_idx": 7,
+      "seed": 49,
+      "samples_per_class": 560,
+      "real": {
+        "n": 2240,
+        "acc": 0.44776785373687744,
+        "macro_precision": 0.45558656977929646,
+        "macro_recall": 0.4477678571428571,
+        "macro_f1": 0.36731387445060043,
+        "per_class": {
+          "healthy": {
+            "precision": 0.46723044397463004,
+            "recall": 0.7892857142857143,
+            "f1": 0.5869853917662683,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.23529411764705882,
+            "recall": 0.007142857142857143,
+            "f1": 0.01386481802426343,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.3879781420765027,
+            "recall": 0.7607142857142857,
+            "f1": 0.5138721351025332,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.7318435754189944,
+            "recall": 0.23392857142857143,
+            "f1": 0.35453315290933696,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            442,
+            6,
+            109,
+            3
+          ],
+          [
+            353,
+            4,
+            185,
+            18
+          ],
+          [
+            102,
+            5,
+            426,
+            27
+          ],
+          [
+            49,
+            2,
+            378,
+            131
+          ]
+        ],
+        "pred_distribution": [
+          0.4223214387893677,
+          0.0075892857275903225,
+          0.49017858505249023,
+          0.07991071790456772
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 0.8594145774841309,
+        "tv_true_vs_pred": 0.4125000238418579,
+        "avg_confidence": 0.5368144512176514
+      },
+      "generated": {
+        "n": 2240,
+        "acc": 0.33125001192092896,
+        "macro_precision": 0.41095447623698766,
+        "macro_recall": 0.33125,
+        "macro_f1": 0.2497202192023856,
+        "per_class": {
+          "healthy": {
+            "precision": 0.6696035242290749,
+            "recall": 0.2714285714285714,
+            "f1": 0.386277001270648,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.16666666666666666,
+            "recall": 0.0035714285714285713,
+            "f1": 0.006993006993006993,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.28027498677948176,
+            "recall": 0.9464285714285714,
+            "f1": 0.43247654018767845,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.5272727272727272,
+            "recall": 0.10357142857142858,
+            "f1": 0.17313432835820897,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            152,
+            10,
+            396,
+            2
+          ],
+          [
+            74,
+            2,
+            463,
+            21
+          ],
+          [
+            1,
+            0,
+            530,
+            29
+          ],
+          [
+            0,
+            0,
+            502,
+            58
+          ]
+        ],
+        "pred_distribution": [
+          0.10133928805589676,
+          0.0053571430034935474,
+          0.8441964387893677,
+          0.0491071417927742
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 1.2891367673873901,
+        "tv_true_vs_pred": 0.5941964387893677,
+        "avg_confidence": 0.5395968556404114
+      },
+      "gap": {
+        "delta_acc_gen_minus_real": -0.11651784181594849,
+        "delta_macro_f1_gen_minus_real": -0.11759365524821483,
+        "delta_macro_recall_gen_minus_real": -0.11651785714285712,
+        "delta_avg_confidence_gen_minus_real": 0.0027824044227600098,
+        "delta_kl_true_vs_pred_gen_minus_real": 0.4297221899032593,
+        "delta_tv_true_vs_pred_gen_minus_real": 0.18169641494750977
+      }
+    },
+    {
+      "repeat_idx": 8,
+      "seed": 50,
+      "samples_per_class": 560,
+      "real": {
+        "n": 2240,
+        "acc": 0.44776785373687744,
+        "macro_precision": 0.46573297182942286,
+        "macro_recall": 0.44776785714285716,
+        "macro_f1": 0.36779416217375993,
+        "per_class": {
+          "healthy": {
+            "precision": 0.46514047866805414,
+            "recall": 0.7982142857142858,
+            "f1": 0.5877712031558185,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.2777777777777778,
+            "recall": 0.008928571428571428,
+            "f1": 0.017301038062283735,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.38817005545286504,
+            "recall": 0.75,
+            "f1": 0.5115712545676004,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.7318435754189944,
+            "recall": 0.23392857142857143,
+            "f1": 0.35453315290933696,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            447,
+            5,
+            105,
+            3
+          ],
+          [
+            359,
+            5,
+            179,
+            17
+          ],
+          [
+            106,
+            6,
+            420,
+            28
+          ],
+          [
+            49,
+            2,
+            378,
+            131
+          ]
+        ],
+        "pred_distribution": [
+          0.4290178716182709,
+          0.008035714738070965,
+          0.48303571343421936,
+          0.07991071790456772
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 0.8448618054389954,
+        "tv_true_vs_pred": 0.41205358505249023,
+        "avg_confidence": 0.5373567938804626
+      },
+      "generated": {
+        "n": 2240,
+        "acc": 0.3191964328289032,
+        "macro_precision": 0.4197224843271383,
+        "macro_recall": 0.31919642857142855,
+        "macro_f1": 0.23167280133785248,
+        "per_class": {
+          "healthy": {
+            "precision": 0.6834862385321101,
+            "recall": 0.26607142857142857,
+            "f1": 0.38303341902313626,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.3,
+            "recall": 0.005357142857142857,
+            "f1": 0.010526315789473686,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.2737169517884914,
+            "recall": 0.9428571428571428,
+            "f1": 0.42426677380474087,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.42168674698795183,
+            "recall": 0.0625,
+            "f1": 0.1088646967340591,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            149,
+            5,
+            402,
+            4
+          ],
+          [
+            69,
+            3,
+            474,
+            14
+          ],
+          [
+            0,
+            2,
+            528,
+            30
+          ],
+          [
+            0,
+            0,
+            525,
+            35
+          ]
+        ],
+        "pred_distribution": [
+          0.09732142835855484,
+          0.004464285913854837,
+          0.8611606955528259,
+          0.03705357015132904
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 1.410266637802124,
+        "tv_true_vs_pred": 0.6111606955528259,
+        "avg_confidence": 0.5414820313453674
+      },
+      "gap": {
+        "delta_acc_gen_minus_real": -0.12857142090797424,
+        "delta_macro_f1_gen_minus_real": -0.13612136083590745,
+        "delta_macro_recall_gen_minus_real": -0.12857142857142861,
+        "delta_avg_confidence_gen_minus_real": 0.004125237464904785,
+        "delta_kl_true_vs_pred_gen_minus_real": 0.5654048323631287,
+        "delta_tv_true_vs_pred_gen_minus_real": 0.1991071105003357
+      }
+    },
+    {
+      "repeat_idx": 9,
+      "seed": 51,
+      "samples_per_class": 560,
+      "real": {
+        "n": 2240,
+        "acc": 0.4441964328289032,
+        "macro_precision": 0.44335428079868555,
+        "macro_recall": 0.4441964285714286,
+        "macro_f1": 0.3641080367629072,
+        "per_class": {
+          "healthy": {
+            "precision": 0.4643226473629783,
+            "recall": 0.8017857142857143,
+            "f1": 0.5880812049770793,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.1875,
+            "recall": 0.005357142857142857,
+            "f1": 0.010416666666666664,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.3814814814814815,
+            "recall": 0.7357142857142858,
+            "f1": 0.5024390243902439,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.7401129943502824,
+            "recall": 0.23392857142857143,
+            "f1": 0.355495251017639,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            449,
+            6,
+            102,
+            3
+          ],
+          [
+            355,
+            3,
+            188,
+            14
+          ],
+          [
+            114,
+            5,
+            412,
+            29
+          ],
+          [
+            49,
+            2,
+            378,
+            131
+          ]
+        ],
+        "pred_distribution": [
+          0.43169641494750977,
+          0.0071428571827709675,
+          0.4821428656578064,
+          0.07901785522699356
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 0.8760231137275696,
+        "tv_true_vs_pred": 0.41383928060531616,
+        "avg_confidence": 0.5375460982322693
+      },
+      "generated": {
+        "n": 2240,
+        "acc": 0.32723215222358704,
+        "macro_precision": 0.41075058193214853,
+        "macro_recall": 0.32723214285714286,
+        "macro_f1": 0.24557763125565202,
+        "per_class": {
+          "healthy": {
+            "precision": 0.6731707317073171,
+            "recall": 0.24642857142857144,
+            "f1": 0.3607843137254902,
+            "support": 560
+          },
+          "pre_diabetes_lifestyle_controlled": {
+            "precision": 0.14285714285714285,
+            "recall": 0.0035714285714285713,
+            "f1": 0.006968641114982578,
+            "support": 560
+          },
+          "oral_medication_and_or_non_insulin_injectable_medication_controlled": {
+            "precision": 0.2783018867924528,
+            "recall": 0.9482142857142857,
+            "f1": 0.4303079416531605,
+            "support": 560
+          },
+          "insulin_dependent": {
+            "precision": 0.5486725663716814,
+            "recall": 0.11071428571428571,
+            "f1": 0.18424962852897472,
+            "support": 560
+          }
+        },
+        "confusion_matrix": [
+          [
+            138,
+            12,
+            400,
+            10
+          ],
+          [
+            67,
+            2,
+            479,
+            12
+          ],
+          [
+            0,
+            0,
+            531,
+            29
+          ],
+          [
+            0,
+            0,
+            498,
+            62
+          ]
+        ],
+        "pred_distribution": [
+          0.0915178582072258,
+          0.0062500000931322575,
+          0.8517857193946838,
+          0.05044642835855484
+        ],
+        "true_distribution": [
+          0.25,
+          0.25,
+          0.25,
+          0.25
+        ],
+        "kl_true_vs_pred": 1.2671198844909668,
+        "tv_true_vs_pred": 0.6017857193946838,
+        "avg_confidence": 0.5434902906417847
+      },
+      "gap": {
+        "delta_acc_gen_minus_real": -0.11696428060531616,
+        "delta_macro_f1_gen_minus_real": -0.11853040550725519,
+        "delta_macro_recall_gen_minus_real": -0.11696428571428574,
+        "delta_avg_confidence_gen_minus_real": 0.005944192409515381,
+        "delta_kl_true_vs_pred_gen_minus_real": 0.3910967707633972,
+        "delta_tv_true_vs_pred_gen_minus_real": 0.18794643878936768
+      }
+    }
+  ],
+  "aggregate": {
+    "real.acc": {
+      "mean": 0.44642857313156126,
+      "std": 0.002258767266560069
+    },
+    "real.macro_f1": {
+      "mean": 0.3661279109404177,
+      "std": 0.0015130860140315716
+    },
+    "real.macro_precision": {
+      "mean": 0.45306888805506934,
+      "std": 0.006261124906916351
+    },
+    "real.macro_recall": {
+      "mean": 0.44642857142857145,
+      "std": 0.00225876975726312
+    },
+    "real.kl_true_vs_pred": {
+      "mean": 0.8731309831142425,
+      "std": 0.018553541460871695
+    },
+    "real.tv_true_vs_pred": {
+      "mean": 0.41290178894996643,
+      "std": 0.001101690536194614
+    },
+    "real.avg_confidence": {
+      "mean": 0.5371712923049927,
+      "std": 0.0007028742565363983
+    },
+    "generated.acc": {
+      "mean": 0.3345089316368103,
+      "std": 0.0068901981228367435
+    },
+    "generated.macro_f1": {
+      "mean": 0.2524497573845897,
+      "std": 0.008597302143446336
+    },
+    "generated.macro_precision": {
+      "mean": 0.4702441463408108,
+      "std": 0.040698801898581945
+    },
+    "generated.macro_recall": {
+      "mean": 0.33450892857142855,
+      "std": 0.0068902023477440235
+    },
+    "generated.kl_true_vs_pred": {
+      "mean": 1.3421062231063843,
+      "std": 0.04524823258172639
+    },
+    "generated.tv_true_vs_pred": {
+      "mean": 0.5968303620815277,
+      "std": 0.005815399016396143
+    },
+    "generated.avg_confidence": {
+      "mean": 0.5409538149833679,
+      "std": 0.0015175733248482834
+    },
+    "gap.delta_acc_gen_minus_real": {
+      "mean": -0.11191964149475098,
+      "std": 0.008038311008941187
+    },
+    "gap.delta_macro_f1_gen_minus_real": {
+      "mean": -0.11367815355582803,
+      "std": 0.009470204881665164
+    },
+    "gap.delta_macro_recall_gen_minus_real": {
+      "mean": -0.11191964285714287,
+      "std": 0.008038318030546205
+    },
+    "gap.delta_avg_confidence_gen_minus_real": {
+      "mean": 0.003782522678375244,
+      "std": 0.0015543386397104614
+    },
+    "gap.delta_kl_true_vs_pred_gen_minus_real": {
+      "mean": 0.46897523999214175,
+      "std": 0.05206010859059642
+    },
+    "gap.delta_tv_true_vs_pred_gen_minus_real": {
+      "mean": 0.18392857313156127,
+      "std": 0.0061145942632759775
+    }
+  }
+}
