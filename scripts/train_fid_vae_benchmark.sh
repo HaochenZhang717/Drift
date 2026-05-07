@@ -147,6 +147,7 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --ts_seq_len ${TSLEN} \
     --batch_size 128 \
     --epochs 100 \
+    --hidden_size 32 \
     --latent_dim 4 \
     --latent_downsample 16 \
     --num_layers 1 \
@@ -168,6 +169,7 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --ts_seq_len ${TSLEN} \
     --batch_size 128 \
     --epochs 100 \
+    --hidden_size 32 \
     --latent_dim 4 \
     --latent_downsample 16 \
     --num_layers 1 \
