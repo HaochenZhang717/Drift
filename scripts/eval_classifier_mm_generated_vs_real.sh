@@ -43,16 +43,21 @@ for ckpt_name in "${CHECKPOINTS[@]}"; do
       --data_root "${DATA_ROOT}" \
       --participants_tsv_path "${PARTICIPANTS_TSV}" \
       --real_split test \
+      \
       --mm_ckpt_path "${ckpt_path}" \
       --mm_weights "${mm_weights}" \
+      \
       --clf_ckpt_path "${CLF_CKPT}" \
       --clf_hidden_channels 32 \
       --clf_dropout 0.1 \
+      \
       --num_classes 4 \
       --samples_per_class 560 \
+      \
       --ts_seq_len 288 \
       --ts_delay 18 \
       --ts_embedding 18 \
+      \
       --window_mode daily \
       --window_stride 288 \
       --daily_min_events 288 \
@@ -60,10 +65,13 @@ for ckpt_name in "${CHECKPOINTS[@]}"; do
       --max_window_span_hours 24 \
       --anchor_sampling_minutes 5.0 \
       --anchor_sampling_tolerance_seconds 2 \
+      \
       --batch_size 256 \
       --gen_batch_size 256 \
       --num_workers 4 \
       --seed 42 \
+      --num_repeats 10 \
+      \
       --output_dir "${OUTPUT_DIR}" \
       --output_json "${out_json}"
   done

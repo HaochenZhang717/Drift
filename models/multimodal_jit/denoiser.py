@@ -40,6 +40,7 @@ class Denoiser(nn.Module):
             in_context_start=args.in_context_start,
         )
         self.img_size = args.img_size
+        self.num_classes = args.num_classes
 
         self.label_drop_prob = args.label_drop_prob
         self.P_mean = args.P_mean
@@ -114,11 +115,63 @@ class Denoiser(nn.Module):
         return loss
 
     @torch.no_grad()
-    def generate(self, labels):
+    def _encode_conditions(
+        self,
+        heart_rate: torch.Tensor,
+        calorie: torch.Tensor,
+        physical_activity: torch.Tensor,
+        respiratory_rate: torch.Tensor,
+        heart_rate_observed_mask: torch.Tensor,
+        calorie_observed_mask: torch.Tensor,
+        physical_activity_observed_mask: torch.Tensor,
+        respiratory_rate_observed_mask: torch.Tensor,
+    ) -> torch.Tensor:
+        return self.mm_encoder.forward(
+            heart_rate=heart_rate,
+            calorie=calorie,
+            physical_activity=physical_activity,
+            respiratory_rate=respiratory_rate,
+            heart_rate_observed_mask=heart_rate_observed_mask,
+            calorie_observed_mask=calorie_observed_mask,
+            physical_activity_observed_mask=physical_activity_observed_mask,
+            respiratory_rate_observed_mask=respiratory_rate_observed_mask,
+        )
+
+    @torch.no_grad()
+    def generate(
+        self,
+        labels: torch.Tensor,
+        heart_rate: torch.Tensor,
+        calorie: torch.Tensor,
+        physical_activity: torch.Tensor,
+        respiratory_rate: torch.Tensor,
+        heart_rate_observed_mask: torch.Tensor,
+        calorie_observed_mask: torch.Tensor,
+        physical_activity_observed_mask: torch.Tensor,
+        respiratory_rate_observed_mask: torch.Tensor,
+    ):
+        """Generate samples with the same multimodal-conditioning schema as forward()."""
         device = labels.device
         bsz = labels.size(0)
-        z = self.noise_scale * torch.randn(bsz, 3, self.img_size, self.img_size, device=device)
-        timesteps = torch.linspace(0.0, 1.0, self.steps+1, device=device).view(-1, *([1] * z.ndim)).expand(-1, bsz, -1, -1, -1)
+        cond_tokens = self._encode_conditions(
+            heart_rate=heart_rate,
+            calorie=calorie,
+            physical_activity=physical_activity,
+            respiratory_rate=respiratory_rate,
+            heart_rate_observed_mask=heart_rate_observed_mask,
+            calorie_observed_mask=calorie_observed_mask,
+            physical_activity_observed_mask=physical_activity_observed_mask,
+            respiratory_rate_observed_mask=respiratory_rate_observed_mask,
+        ).to(device)
+
+        z = self.noise_scale * torch.randn(
+            bsz,
+            self.net.in_channels,
+            self.img_size,
+            self.img_size,
+            device=device,
+        )
+        timesteps = torch.linspace(0.0, 1.0, self.steps + 1, device=device)
 
         if self.method == "euler":
             stepper = self._euler_step
@@ -129,42 +182,33 @@ class Denoiser(nn.Module):
 
         # ode
         for i in range(self.steps - 1):
-            t = timesteps[i]
-            t_next = timesteps[i + 1]
-            z = stepper(z, t, t_next, labels)
+            t = timesteps[i].view(1, 1, 1, 1).expand(bsz, 1, 1, 1)
+            t_next = timesteps[i + 1].view(1, 1, 1, 1).expand(bsz, 1, 1, 1)
+            z = stepper(z, t, t_next, labels, cond_tokens)
+
         # last step euler
-        z = self._euler_step(z, timesteps[-2], timesteps[-1], labels)
+        t_last = timesteps[-2].view(1, 1, 1, 1).expand(bsz, 1, 1, 1)
+        t_end = timesteps[-1].view(1, 1, 1, 1).expand(bsz, 1, 1, 1)
+        z = self._euler_step(z, t_last, t_end, labels, cond_tokens)
         return z
 
     @torch.no_grad()
-    def _forward_sample(self, z, t, labels):
-        # conditional
-        x_cond = self.net(z, t.flatten(), labels)
-        v_cond = (x_cond - z) / (1.0 - t).clamp_min(self.t_eps)
-
-        # unconditional
-        x_uncond = self.net(z, t.flatten(), torch.full_like(labels, self.num_classes))
-        v_uncond = (x_uncond - z) / (1.0 - t).clamp_min(self.t_eps)
-
-        # cfg interval
-        low, high = self.cfg_interval
-        interval_mask = (t < high) & ((low == 0) | (t > low))
-        cfg_scale_interval = torch.where(interval_mask, self.cfg_scale, 1.0)
-
-        return v_uncond + cfg_scale_interval * (v_cond - v_uncond)
+    def _forward_sample(self, z, t, labels, cond_tokens):
+        x_cond = self.net(z, t.flatten(), labels, cond_tokens)
+        return (x_cond - z) / (1.0 - t).clamp_min(self.t_eps)
 
     @torch.no_grad()
-    def _euler_step(self, z, t, t_next, labels):
-        v_pred = self._forward_sample(z, t, labels)
+    def _euler_step(self, z, t, t_next, labels, cond_tokens):
+        v_pred = self._forward_sample(z, t, labels, cond_tokens)
         z_next = z + (t_next - t) * v_pred
         return z_next
 
     @torch.no_grad()
-    def _heun_step(self, z, t, t_next, labels):
-        v_pred_t = self._forward_sample(z, t, labels)
+    def _heun_step(self, z, t, t_next, labels, cond_tokens):
+        v_pred_t = self._forward_sample(z, t, labels, cond_tokens)
 
         z_next_euler = z + (t_next - t) * v_pred_t
-        v_pred_t_next = self._forward_sample(z_next_euler, t_next, labels)
+        v_pred_t_next = self._forward_sample(z_next_euler, t_next, labels, cond_tokens)
 
         v_pred = 0.5 * (v_pred_t + v_pred_t_next)
         z_next = z + (t_next - t) * v_pred
