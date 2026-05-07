@@ -255,6 +255,40 @@ def evaluate_with_classifier(
     }
 
 
+def summarize_repeat_metrics(repeat_summaries: List[Dict[str, Any]]) -> Dict[str, Any]:
+    metric_keys = [
+        ("real", "acc"),
+        ("real", "macro_f1"),
+        ("real", "macro_precision"),
+        ("real", "macro_recall"),
+        ("real", "kl_true_vs_pred"),
+        ("real", "tv_true_vs_pred"),
+        ("real", "avg_confidence"),
+        ("generated", "acc"),
+        ("generated", "macro_f1"),
+        ("generated", "macro_precision"),
+        ("generated", "macro_recall"),
+        ("generated", "kl_true_vs_pred"),
+        ("generated", "tv_true_vs_pred"),
+        ("generated", "avg_confidence"),
+        ("gap", "delta_acc_gen_minus_real"),
+        ("gap", "delta_macro_f1_gen_minus_real"),
+        ("gap", "delta_macro_recall_gen_minus_real"),
+        ("gap", "delta_avg_confidence_gen_minus_real"),
+        ("gap", "delta_kl_true_vs_pred_gen_minus_real"),
+        ("gap", "delta_tv_true_vs_pred_gen_minus_real"),
+    ]
+
+    agg: Dict[str, Any] = {}
+    for section, key in metric_keys:
+        vals = np.asarray([float(item[section][key]) for item in repeat_summaries], dtype=np.float64)
+        agg[f"{section}.{key}"] = {
+            "mean": float(vals.mean()),
+            "std": float(vals.std()),
+        }
+    return agg
+
+
 def main(args: argparse.Namespace) -> None:
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -272,54 +306,78 @@ def main(args: argparse.Namespace) -> None:
     gen_model = build_generator_from_ckpt(args, device)
     clf = build_classifier_from_ckpt(args, device)
 
-    x_real, y_real = collect_real_series_per_class(
-        dataset=dataset,
-        num_classes=args.num_classes,
-        n_per_class=args.samples_per_class,
-        device=device,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-    )
-    k_real = int(y_real.numel() // args.num_classes)
-    print(f"Collected real samples: total={y_real.numel()} | per_class={k_real}")
+    repeat_summaries: List[Dict[str, Any]] = []
+    for repeat_idx in range(args.num_repeats):
+        repeat_seed = args.seed + repeat_idx
+        set_seed(repeat_seed)
+        print(f"\n[Repeat {repeat_idx + 1}/{args.num_repeats}] seed={repeat_seed}")
 
-    x_gen, y_gen = generate_series_per_class(
-        gen_model=gen_model,
-        num_classes=args.num_classes,
-        n_per_class=k_real,
-        config=gen_config,
-        device=device,
-        batch_size=args.gen_batch_size,
-        cfg_alpha=args.cfg_alpha,
-    )
-    print(f"Generated samples: total={y_gen.numel()} | per_class={k_real}")
+        x_real, y_real = collect_real_series_per_class(
+            dataset=dataset,
+            num_classes=args.num_classes,
+            n_per_class=args.samples_per_class,
+            device=device,
+            batch_size=args.batch_size,
+            num_workers=args.num_workers,
+        )
+        k_real = int(y_real.numel() // args.num_classes)
+        print(f"Collected real samples: total={y_real.numel()} | per_class={k_real}")
 
-    real_metrics = evaluate_with_classifier(clf, x_real, y_real, args.num_classes)
-    gen_metrics = evaluate_with_classifier(clf, x_gen, y_gen, args.num_classes)
+        x_gen, y_gen = generate_series_per_class(
+            gen_model=gen_model,
+            num_classes=args.num_classes,
+            n_per_class=k_real,
+            config=gen_config,
+            device=device,
+            batch_size=args.gen_batch_size,
+            cfg_alpha=args.cfg_alpha,
+        )
+        print(f"Generated samples: total={y_gen.numel()} | per_class={k_real}")
 
-    gap = {
-        "delta_acc_gen_minus_real": gen_metrics["acc"] - real_metrics["acc"],
-        "delta_macro_f1_gen_minus_real": gen_metrics["macro_f1"] - real_metrics["macro_f1"],
-        "delta_macro_recall_gen_minus_real": gen_metrics["macro_recall"] - real_metrics["macro_recall"],
-        "delta_avg_confidence_gen_minus_real": gen_metrics["avg_confidence"] - real_metrics["avg_confidence"],
-        "delta_kl_true_vs_pred_gen_minus_real": gen_metrics["kl_true_vs_pred"] - real_metrics["kl_true_vs_pred"],
-        "delta_tv_true_vs_pred_gen_minus_real": gen_metrics["tv_true_vs_pred"] - real_metrics["tv_true_vs_pred"],
-    }
+        real_metrics = evaluate_with_classifier(clf, x_real, y_real, args.num_classes)
+        gen_metrics = evaluate_with_classifier(clf, x_gen, y_gen, args.num_classes)
+
+        gap = {
+            "delta_acc_gen_minus_real": gen_metrics["acc"] - real_metrics["acc"],
+            "delta_macro_f1_gen_minus_real": gen_metrics["macro_f1"] - real_metrics["macro_f1"],
+            "delta_macro_recall_gen_minus_real": gen_metrics["macro_recall"] - real_metrics["macro_recall"],
+            "delta_avg_confidence_gen_minus_real": gen_metrics["avg_confidence"] - real_metrics["avg_confidence"],
+            "delta_kl_true_vs_pred_gen_minus_real": gen_metrics["kl_true_vs_pred"] - real_metrics["kl_true_vs_pred"],
+            "delta_tv_true_vs_pred_gen_minus_real": gen_metrics["tv_true_vs_pred"] - real_metrics["tv_true_vs_pred"],
+        }
+        repeat_summaries.append(
+            {
+                "repeat_idx": repeat_idx,
+                "seed": repeat_seed,
+                "samples_per_class": k_real,
+                "real": real_metrics,
+                "generated": gen_metrics,
+                "gap": gap,
+            }
+        )
+        print(
+            f"repeat={repeat_idx + 1} | real.acc={real_metrics['acc']:.4f} | "
+            f"gen.acc={gen_metrics['acc']:.4f} | delta={gap['delta_acc_gen_minus_real']:+.4f}"
+        )
+
+    aggregate = summarize_repeat_metrics(repeat_summaries)
+    final_samples_per_class = int(repeat_summaries[-1]["samples_per_class"])
 
     summary = {
         "settings": {
             "gen_ckpt_path": args.gen_ckpt_path,
             "clf_ckpt_path": args.clf_ckpt_path,
             "real_split": args.real_split,
-            "samples_per_class": k_real,
+            "samples_per_class": final_samples_per_class,
             "num_classes": args.num_classes,
             "cfg_alpha": args.cfg_alpha,
             "window_mode": args.window_mode,
             "daily_min_events": args.daily_min_events,
+            "num_repeats": args.num_repeats,
+            "seed": args.seed,
         },
-        "real": real_metrics,
-        "generated": gen_metrics,
-        "gap": gap,
+        "repeats": repeat_summaries,
+        "aggregate": aggregate,
     }
 
     out_dir = Path(args.output_dir)
@@ -327,10 +385,17 @@ def main(args: argparse.Namespace) -> None:
     out_path = out_dir / args.output_json
     out_path.write_text(json.dumps(summary, indent=2, ensure_ascii=False))
 
-    print("\n=== Classifier Quality Gap Summary ===")
-    print(f"real.acc = {real_metrics['acc']:.4f} | gen.acc = {gen_metrics['acc']:.4f} | delta = {gap['delta_acc_gen_minus_real']:+.4f}")
-    print(f"real.macro_f1 = {real_metrics['macro_f1']:.4f} | gen.macro_f1 = {gen_metrics['macro_f1']:.4f} | delta = {gap['delta_macro_f1_gen_minus_real']:+.4f}")
-    print(f"real.kl = {real_metrics['kl_true_vs_pred']:.4f} | gen.kl = {gen_metrics['kl_true_vs_pred']:.4f} | delta = {gap['delta_kl_true_vs_pred_gen_minus_real']:+.4f}")
+    print("\n=== Repeated Classifier Quality Gap Summary ===")
+    print(
+        f"real.acc mean±std = {aggregate['real.acc']['mean']:.4f} ± {aggregate['real.acc']['std']:.4f} | "
+        f"gen.acc mean±std = {aggregate['generated.acc']['mean']:.4f} ± {aggregate['generated.acc']['std']:.4f} | "
+        f"delta mean±std = {aggregate['gap.delta_acc_gen_minus_real']['mean']:+.4f} ± {aggregate['gap.delta_acc_gen_minus_real']['std']:.4f}"
+    )
+    print(
+        f"real.macro_f1 mean±std = {aggregate['real.macro_f1']['mean']:.4f} ± {aggregate['real.macro_f1']['std']:.4f} | "
+        f"gen.macro_f1 mean±std = {aggregate['generated.macro_f1']['mean']:.4f} ± {aggregate['generated.macro_f1']['std']:.4f} | "
+        f"delta mean±std = {aggregate['gap.delta_macro_f1_gen_minus_real']['mean']:+.4f} ± {aggregate['gap.delta_macro_f1_gen_minus_real']['std']:.4f}"
+    )
     print(f"Saved detailed report to {out_path}")
 
 
@@ -367,6 +432,7 @@ if __name__ == "__main__":
     parser.add_argument("--gen_batch_size", type=int, default=256)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--num_repeats", type=int, default=1)
 
     parser.add_argument("--output_dir", type=str, default="./outputs/aireadi_eval_classifier")
     parser.add_argument("--output_json", type=str, default="generated_vs_real_classifier_gap.json")
