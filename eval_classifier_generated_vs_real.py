@@ -432,7 +432,7 @@ if __name__ == "__main__":
     parser.add_argument("--gen_batch_size", type=int, default=256)
     parser.add_argument("--num_workers", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument("--num_repeats", type=int, default=1)
+    parser.add_argument("--num_repeats", type=int, default=10)
 
     parser.add_argument("--output_dir", type=str, default="./outputs/aireadi_eval_classifier")
     parser.add_argument("--output_json", type=str, default="generated_vs_real_classifier_gap.json")
