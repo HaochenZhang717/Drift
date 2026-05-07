@@ -130,7 +130,8 @@
 
 #!/bin/bash
 
-TS_LENGTHS=(64 128 256 512)
+#TS_LENGTHS=(64 128 256 512)
+TS_LENGTHS=(64)
 
 for TSLEN in "${TS_LENGTHS[@]}"; do
 
