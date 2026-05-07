@@ -1,5 +1,6 @@
 import os
 import argparse
+import math
 import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
@@ -40,7 +41,8 @@ def get_args():
     parser.add_argument("--hidden_size", type=int, default=128)
     parser.add_argument("--num_layers", type=int, default=2)
     parser.add_argument("--latent_dim", type=int, default=4)
-    parser.add_argument("--latent_downsample", type=int, default=8)
+    parser.add_argument("--latent_downsample", type=int, default=16)
+    parser.add_argument("--decoder_upsample_rate", type=int, default=4)
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--beta", type=float, default=0.01)
     parser.add_argument("--one_channel", action="store_true")
@@ -156,6 +158,28 @@ def load_benchmark_datasets(args):
     return train_dataset, val_dataset
 
 
+def validate_decoder_shape_args(seq_len, latent_downsample, decoder_upsample_rate):
+    if latent_downsample < 1 or latent_downsample & (latent_downsample - 1) != 0:
+        raise ValueError("--latent_downsample must be a power of two.")
+    if decoder_upsample_rate < 1:
+        raise ValueError("--decoder_upsample_rate must be positive.")
+    if seq_len % latent_downsample != 0:
+        raise ValueError(
+            f"--ts_seq_len ({seq_len}) must be divisible by --latent_downsample ({latent_downsample})."
+        )
+    num_upsample_blocks = int(math.log(latent_downsample, decoder_upsample_rate))
+    decoded_len = (seq_len // latent_downsample) * (decoder_upsample_rate ** num_upsample_blocks)
+    if decoded_len != seq_len:
+        raise ValueError(
+            "Decoder output length will not match input length without final interpolation: "
+            f"seq_len={seq_len}, latent_downsample={latent_downsample}, "
+            f"decoder_upsample_rate={decoder_upsample_rate}, "
+            f"num_upsample_blocks={num_upsample_blocks}, decoded_len={decoded_len}. "
+            "Use compatible values where latent_downsample is a power of decoder_upsample_rate, "
+            "e.g. latent_downsample=16 with decoder_upsample_rate=4."
+        )
+
+
 def train_one_epoch(model, dataloader, optimizer, device):
     model.train()
     total_loss, total_recon, total_kl = 0.0, 0.0, 0.0
@@ -215,6 +239,7 @@ def train(args):
     sample = train_dataset[0][0]
     print(f"data shape: {sample.shape}")
     c, t = sample.shape
+    validate_decoder_shape_args(t, args.latent_downsample, args.decoder_upsample_rate)
 
     model = FIDVAE(
         input_dim=c,
@@ -224,12 +249,11 @@ def train(args):
         num_layers=args.num_layers,
         latent_dim=args.latent_dim,
         latent_downsample=args.latent_downsample,
+        decoder_upsample_rate=args.decoder_upsample_rate,
         dropout=args.dropout,
         beta=args.beta,
     ).to(device)
 
-    print(model)
-    breakpoint()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if args.one_channel:

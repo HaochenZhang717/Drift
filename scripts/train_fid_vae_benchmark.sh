@@ -147,11 +147,17 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --ts_seq_len ${TSLEN} \
     --batch_size 128 \
     --epochs 100 \
+    --lr 5e-4 \
+    --weight_decay 1e-3 \
+    \
     --hidden_size 32 \
+    --num_layers 1 \
     --latent_dim 4 \
     --latent_downsample 16 \
-    --num_layers 1 \
+    --decoder_upsample_rate 4 \
     --dropout 0.1 \
+    --beta 0.1 \
+    \
     --save_dir ./fid_vae_ckpts/benchmark_ercot_${TSLEN} \
     --wandb \
     --wandb_project "FID_VAE" \
@@ -171,6 +177,7 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --epochs 100 \
     --hidden_size 32 \
     --latent_dim 4 \
+    --beta 0.1 \
     --latent_downsample 16 \
     --num_layers 1 \
     --dropout 0.1 \
@@ -180,4 +187,3 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --wandb_run_name "HouseholdData_len${TSLEN}"
 
 done
-

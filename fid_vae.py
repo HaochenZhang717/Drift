@@ -43,12 +43,20 @@ class UpsampleBlock(nn.Module):
     def __init__(self, channels: int, scale_factor: int = 4, dropout: float = 0.0):
         super().__init__()
         self.scale_factor = scale_factor
-        self.conv = nn.Conv1d(channels, channels, kernel_size=3, padding=1)
-        self.res = ConvResBlock(channels, dropout=dropout)
+        self.block = nn.Sequential(
+            nn.ConvTranspose1d(
+                channels,
+                channels,
+                kernel_size=scale_factor,
+                stride=scale_factor,
+            ),
+            nn.GroupNorm(_num_groups(channels), channels),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+        )
 
     def forward(self, x):
-        x = F.interpolate(x, scale_factor=self.scale_factor, mode="linear", align_corners=False)
-        return self.res(self.conv(x))
+        return self.block(x)
 
 
 class FIDEncoder(nn.Module):
@@ -129,15 +137,25 @@ class FIDDecoder(nn.Module):
         self.register_buffer("latent_downsample_buffer", torch.tensor(latent_downsample, dtype=torch.long), persistent=True)
         self.register_buffer("decoder_upsample_rate_buffer", torch.tensor(decoder_upsample_rate, dtype=torch.long), persistent=True)
 
-        self.in_proj = nn.Conv1d(latent_dim, hidden_size, kernel_size=3, padding=1)
-        self.layers = nn.ModuleList([
-            ConvResBlock(hidden_size, dropout=dropout)
-            for _ in range(num_layers)
-        ])
+        self.in_proj = nn.Sequential(
+            nn.Conv1d(latent_dim, hidden_size, kernel_size=3, padding=1),
+            nn.GroupNorm(_num_groups(hidden_size), hidden_size),
+            nn.SiLU(),
+            nn.Dropout(dropout),
+        )
         num_upsample_blocks = int(math.log(latent_downsample, decoder_upsample_rate))
         self.up_blocks = nn.ModuleList([
             UpsampleBlock(hidden_size, scale_factor=decoder_upsample_rate, dropout=dropout)
             for _ in range(num_upsample_blocks)
+        ])
+        self.refine = nn.Sequential(*[
+            nn.Sequential(
+                nn.Conv1d(hidden_size, hidden_size, kernel_size=3, padding=1),
+                nn.GroupNorm(_num_groups(hidden_size), hidden_size),
+                nn.SiLU(),
+                nn.Dropout(dropout),
+            )
+            for _ in range(max(0, num_layers - num_upsample_blocks))
         ])
         self.out = nn.Sequential(
             nn.GroupNorm(_num_groups(hidden_size), hidden_size),
@@ -154,13 +172,15 @@ class FIDDecoder(nn.Module):
             z = z.view(z.shape[0], self.latent_dim, self.latent_seq_len)
 
         x = self.in_proj(z)
-        for layer in self.layers:
-            x = layer(x)
         for block in self.up_blocks:
             x = block(x)
+        x = self.refine(x)
         x = self.out(x)
         if x.shape[-1] != self.seq_len:
-            x = F.interpolate(x, size=self.seq_len, mode="linear", align_corners=False)
+            raise ValueError(
+                f"Decoder output length {x.shape[-1]} does not match seq_len {self.seq_len}. "
+                "Adjust latent_downsample and decoder_upsample_rate."
+            )
         return x
 
 
@@ -270,7 +290,8 @@ if __name__ == "__main__":
         hidden_size=128,
         num_layers=2,
         latent_dim=4,
-        latent_downsample=8,
+        latent_downsample=16,
+        decoder_upsample_rate=4,
         beta=0.001,
     )
 
