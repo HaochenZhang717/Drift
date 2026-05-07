@@ -1,4 +1,12 @@
 import os, sys
+from pathlib import Path
+
+# Resolve imports deterministically before importing project/baseline modules.
+BASELINE_ROOT = str(Path(__file__).resolve().parent)
+PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
+if BASELINE_ROOT not in sys.path:
+    sys.path.insert(0, BASELINE_ROOT)
+
 import torch
 import numpy as np
 import torch.multiprocessing
@@ -6,15 +14,33 @@ import logging
 from metrics import evaluate_model_uncond
 from utils.loggers import NeptuneLogger, PrintLogger, CompositeLogger
 from utils.utils import create_model_name_and_dir, print_model_params, log_config_and_tags
-from data_provider.data_provider import data_provider
 from utils.utils_args import parse_args_uncond
 
 from distributed.distributed import is_main_process, Disributed
 import torch.distributed as dist
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-torch.multiprocessing.set_sharing_strategy('file_system')
+# Import project-level data_provider with project utils, then restore baseline utils namespace.
+_baseline_utils_modules = {
+    name: module
+    for name, module in sys.modules.items()
+    if (name == "utils" or name.startswith("utils."))
+}
+for module_name in list(sys.modules.keys()):
+    if module_name == "utils" or module_name.startswith("utils."):
+        del sys.modules[module_name]
+if PROJECT_ROOT in sys.path:
+    sys.path.remove(PROJECT_ROOT)
+sys.path.insert(0, PROJECT_ROOT)
+
+from data_provider.data_provider import data_provider
 from data_provider.combined_datasets import dataset_list
+
+for module_name in list(sys.modules.keys()):
+    if module_name == "utils" or module_name.startswith("utils."):
+        del sys.modules[module_name]
+sys.modules.update(_baseline_utils_modules)
+
+torch.multiprocessing.set_sharing_strategy('file_system')
 from importlib import import_module
 
 

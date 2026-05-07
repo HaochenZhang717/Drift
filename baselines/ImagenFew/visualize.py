@@ -1,17 +1,45 @@
 import numpy as np
 import torch
+import sys
+from pathlib import Path
+
+# Resolve imports deterministically before importing project/baseline modules.
+BASELINE_ROOT = str(Path(__file__).resolve().parent)
+PROJECT_ROOT = str(Path(__file__).resolve().parents[2])
+if BASELINE_ROOT not in sys.path:
+    sys.path.insert(0, BASELINE_ROOT)
+
 from utils.loggers import CompositeLogger, NeptuneLogger, PrintLogger
 from utils.utils_args import parse_args_uncond
 from metrics import evaluate_model_uncond
 import logging
-from data_provider.data_provider import data_provider
 from utils.utils import create_model_name_and_dir, log_config_and_tags
 from utils.utils_vis import prepare_data, PCA_plot, TSNE_plot, density_plot, jensen_shannon_divergence
-from data_provider.combined_datasets import dataset_list
 from itertools import islice
 from importlib import import_module
 
 import matplotlib.pyplot as plt
+
+# Ensure shared project packages (e.g., data_provider -> utils.utils_data) resolve to project root.
+_baseline_utils_modules = {
+    name: module
+    for name, module in sys.modules.items()
+    if (name == "utils" or name.startswith("utils."))
+}
+for module_name in list(sys.modules.keys()):
+    if module_name == "utils" or module_name.startswith("utils."):
+        del sys.modules[module_name]
+if PROJECT_ROOT in sys.path:
+    sys.path.remove(PROJECT_ROOT)
+sys.path.insert(0, PROJECT_ROOT)
+
+from data_provider.data_provider import data_provider
+from data_provider.combined_datasets import dataset_list
+
+for module_name in list(sys.modules.keys()):
+    if module_name == "utils" or module_name.startswith("utils."):
+        del sys.modules[module_name]
+sys.modules.update(_baseline_utils_modules)
 
 
 def main(args):

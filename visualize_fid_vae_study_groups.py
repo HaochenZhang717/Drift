@@ -120,6 +120,30 @@ def make_dataset(args):
 
 
 def infer_model_kwargs(state_dict, seq_len):
+    if "encoder.stem.weight" in state_dict:
+        input_dim = int(state_dict["encoder.stem.weight"].shape[1])
+        hidden_size = int(state_dict["encoder.stem.weight"].shape[0])
+        latent_dim = int(state_dict["encoder.to_mu.weight"].shape[0])
+        layer_ids = set()
+        for key in state_dict:
+            prefix = "encoder.layers."
+            if key.startswith(prefix):
+                rest = key[len(prefix):]
+                layer_ids.add(int(rest.split(".", 1)[0]))
+        num_layers = max(layer_ids) + 1 if layer_ids else 2
+        latent_downsample = int(state_dict.get("decoder.latent_downsample_buffer", torch.tensor(8)).item())
+        if "decoder.seq_len_buffer" in state_dict:
+            seq_len = int(state_dict["decoder.seq_len_buffer"].item())
+        return {
+            "input_dim": input_dim,
+            "output_dim": input_dim,
+            "seq_len": seq_len,
+            "hidden_size": hidden_size,
+            "num_layers": num_layers,
+            "latent_dim": latent_dim,
+            "latent_downsample": latent_downsample,
+        }
+
     if "encoder.conv.0.weight" not in state_dict or "encoder.conv.2.weight" not in state_dict:
         raise ValueError("Checkpoint does not look like a FIDVAE state_dict.")
     input_dim = int(state_dict["encoder.conv.0.weight"].shape[1])
@@ -132,14 +156,12 @@ def infer_model_kwargs(state_dict, seq_len):
             rest = key[len(prefix):]
             layer_ids.add(int(rest.split(".", 1)[0]))
     num_layers = max(layer_ids) + 1 if layer_ids else 2
-    num_heads = 8 if hidden_size % 8 == 0 else 4 if hidden_size % 4 == 0 else 1
     return {
         "input_dim": input_dim,
         "output_dim": input_dim,
         "seq_len": seq_len,
         "hidden_size": hidden_size,
         "num_layers": num_layers,
-        "num_heads": num_heads,
         "latent_dim": latent_dim,
     }
 

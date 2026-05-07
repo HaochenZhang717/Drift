@@ -130,7 +130,7 @@
 
 #!/bin/bash
 
-TS_LENGTHS=(64 128 256 512)
+TS_LENGTHS=(128 256 512 64)
 #TS_LENGTHS=(64)
 
 for TSLEN in "${TS_LENGTHS[@]}"; do
@@ -147,8 +147,14 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --ts_seq_len ${TSLEN} \
     --batch_size 128 \
     --epochs 100 \
+    --latent_dim 4 \
+    --latent_downsample 16 \
+    --num_layers 1 \
+    --dropout 0.1 \
     --save_dir ./fid_vae_ckpts/benchmark_ercot_${TSLEN} \
-    --wandb
+    --wandb \
+    --wandb_project "FID_VAE" \
+    --wandb_run_name "ErcotData_len${TSLEN}"
 
   echo "========================================"
   echo "Running Household with TSLEN=${TSLEN}"
@@ -162,8 +168,14 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --ts_seq_len ${TSLEN} \
     --batch_size 128 \
     --epochs 100 \
+    --latent_dim 4 \
+    --latent_downsample 16 \
+    --num_layers 1 \
+    --dropout 0.1 \
     --save_dir ./fid_vae_ckpts/benchmark_household_${TSLEN} \
-    --wandb
+    --wandb \
+    --wandb_project "FID_VAE" \
+    --wandb_run_name "HouseholdData_len${TSLEN}"
 
 done
 

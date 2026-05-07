@@ -39,8 +39,9 @@ def get_args():
     # model
     parser.add_argument("--hidden_size", type=int, default=128)
     parser.add_argument("--num_layers", type=int, default=2)
-    parser.add_argument("--num_heads", type=int, default=8)
-    parser.add_argument("--latent_dim", type=int, default=128)
+    parser.add_argument("--latent_dim", type=int, default=4)
+    parser.add_argument("--latent_downsample", type=int, default=8)
+    parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--beta", type=float, default=0.01)
     parser.add_argument("--one_channel", action="store_true")
 
@@ -221,8 +222,9 @@ def train(args):
         seq_len=t,
         hidden_size=args.hidden_size,
         num_layers=args.num_layers,
-        num_heads=args.num_heads,
         latent_dim=args.latent_dim,
+        latent_downsample=args.latent_downsample,
+        dropout=args.dropout,
         beta=args.beta,
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)

@@ -180,6 +180,7 @@ data_dict = {
     'ErcotData': ErcotData,
     'HouseholdData': HouseholdData,
     'GlucoseSliding': GlucoseSliding,
+    'glucose': GlucoseSliding,
 }
 
 def data_provider(args):
@@ -275,6 +276,8 @@ def data_provider(args):
 
 
 def get_train(config):
+    if 'rel_path_train' in config:
+        config['rel_path'] = config['rel_path_train']
     Data = data_dict[config['data']]
     if Data is None:
         raise ImportError(f"Dataset backend '{config['data']}' is unavailable because its optional dependency is not installed.")
@@ -282,6 +285,10 @@ def get_train(config):
     return Data(**config)
 
 def get_test(config):
+    if 'rel_path_valid' in config:
+        config['rel_path'] = config['rel_path_valid']
+    elif 'rel_path_test' in config:
+        config['rel_path'] = config['rel_path_test']
     Data = data_dict[config['data']]
     if Data is None:
         raise ImportError(f"Dataset backend '{config['data']}' is unavailable because its optional dependency is not installed.")

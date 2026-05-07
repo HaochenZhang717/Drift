@@ -48,6 +48,7 @@ dataset_list = [
             "ErcotData",
             "HouseholdData",
             "GlucoseSliding",
+            "glucose",
         ]
 
 def get_pretrained_datasets_names():

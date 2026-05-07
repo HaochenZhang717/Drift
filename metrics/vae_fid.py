@@ -126,11 +126,42 @@ def _load_model_state_dict(ckpt_path, device):
 
 
 def _infer_ckpt_input_dim(state_dict):
-    # encoder.conv.0.weight shape: (hidden_size//2, input_dim, kernel)
+    if "encoder.stem.weight" in state_dict:
+        return int(state_dict["encoder.stem.weight"].shape[1])
     return int(state_dict["encoder.conv.0.weight"].shape[1])
 
 
 def _infer_vae_hparams_from_state(state_dict):
+    if "encoder.stem.weight" in state_dict:
+        stem_w = state_dict["encoder.stem.weight"]
+        to_mu_w = state_dict["encoder.to_mu.weight"]
+        hidden_size = int(stem_w.shape[0])
+        latent_dim = int(to_mu_w.shape[0])
+        num_layers = len({
+            int(key.split(".")[2])
+            for key in state_dict.keys()
+            if key.startswith("encoder.layers.") and key.split(".")[2].isdigit()
+        })
+        num_layers = num_layers if num_layers > 0 else 2
+        inferred_downsample = 2 ** len({
+            int(key.split(".")[2])
+            for key in state_dict.keys()
+            if key.startswith("encoder.down_blocks.") and key.split(".")[2].isdigit()
+        })
+        latent_downsample = int(
+            state_dict.get("decoder.latent_downsample_buffer", torch.tensor(inferred_downsample)).item()
+        )
+        if "decoder.seq_len_buffer" not in state_dict:
+            raise ValueError("New FIDVAE checkpoint is missing decoder.seq_len_buffer; please retrain or pass hparams explicitly.")
+        seq_len = int(state_dict["decoder.seq_len_buffer"].item())
+        return {
+            "latent_dim": latent_dim,
+            "hidden_size": hidden_size,
+            "num_layers": num_layers,
+            "seq_len": seq_len,
+            "latent_downsample": latent_downsample,
+        }
+
     # encoder.to_mu.weight: (latent_dim, hidden_size)
     to_mu_w = state_dict["encoder.to_mu.weight"]
     latent_dim = int(to_mu_w.shape[0])
@@ -145,16 +176,6 @@ def _infer_vae_hparams_from_state(state_dict):
                 layer_indices.append(int(parts[2]))
     num_layers = (max(layer_indices) + 1) if layer_indices else 2
 
-    # Heuristic for heads: prefer 8 when divisible, then 4/2/1
-    if hidden_size % 8 == 0:
-        num_heads = 8
-    elif hidden_size % 4 == 0:
-        num_heads = 4
-    elif hidden_size % 2 == 0:
-        num_heads = 2
-    else:
-        num_heads = 1
-
     # decoder.fc.weight: (hidden_size * (seq_len // 4), latent_dim)
     fc_w = state_dict["decoder.fc.weight"]
     seq_len = int((fc_w.shape[0] // hidden_size) * 4)
@@ -162,7 +183,6 @@ def _infer_vae_hparams_from_state(state_dict):
         "latent_dim": latent_dim,
         "hidden_size": hidden_size,
         "num_layers": num_layers,
-        "num_heads": num_heads,
         "seq_len": seq_len,
     }
 
@@ -224,8 +244,8 @@ def VAE_FID(
         seq_len=hp["seq_len"],
         hidden_size=hp["hidden_size"],
         num_layers=hp["num_layers"],
-        num_heads=hp["num_heads"],
         latent_dim=hp["latent_dim"],
+        latent_downsample=hp.get("latent_downsample", 8),
     ).to(device).eval()
     model = _load_model_state(model, state_dict)
     # print("real_tensor size:", real_tensor.shape)

@@ -21,14 +21,14 @@ logging_iter: 100
 tags: []
 run_dir: ImagenTime/glucose/
 # Data
-datasets_dir: /playpen-shared/haochenz/Drift/AI-READI/
+datasets_dir: ./AI-READI/
 seq_len: 128
 pretrain: false
 datasets:
-  - name: glucose
-    data: glucose
+  - name: GlucoseSliding
+    data: GlucoseSliding
     rel_path_train: glucose_train.parquet
-    rel_path_test: glucose_test.parquet
+    rel_path_valid: glucose_valid.parquet
     stride: 128
 train_on_datasets:
-  - glucose
+  - GlucoseSliding

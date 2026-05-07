@@ -29,6 +29,10 @@ def _split_borders(num_rows, seq_len, flag):
     raise ValueError(f"Unsupported split '{flag}'. Expected train, val/valid, or test.")
 
 
+def _resolve_stride(config):
+    return config.get("window_stride", config.get("ts_stride", config.get("stride", 1)))
+
+
 class _CSVWindowDataset(Dataset):
     def __init__(
         self,
@@ -144,7 +148,7 @@ class ErcotData(_CSVWindowDataset):
             flag=config["flag"],
             seq_len=config["seq_len"],
             scale=config.get("scale", True),
-            stride=config.get("window_stride", 1),
+            stride=_resolve_stride(config),
             value_cols=config.get("value_cols"),
             drop_cols=config.get("drop_cols", ["source_year"]),
         )
@@ -190,7 +194,7 @@ class HouseholdData(_CSVWindowDataset):
             flag=config["flag"],
             seq_len=config["seq_len"],
             scale=config.get("scale", True),
-            stride=config.get("window_stride", 1),
+            stride=_resolve_stride(config),
             value_cols=config.get("value_cols"),
             drop_cols=config.get("drop_cols"),
         )

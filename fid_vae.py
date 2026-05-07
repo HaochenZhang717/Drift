@@ -1,93 +1,53 @@
+import math
+
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 
-class NormCausalAttention(nn.Module):
-    def __init__(
-        self,
-        dim: int,
-        num_heads: int,
-        qkv_bias: bool = False,
-        qk_norm: bool = False,
-        attn_drop: float = 0.,
-        proj_drop: float = 0.,
-        norm_layer: nn.Module = nn.LayerNorm,
-    ) -> None:
+def _num_groups(channels: int) -> int:
+    for groups in (8, 4, 2):
+        if channels % groups == 0:
+            return groups
+    return 1
+
+
+class ConvResBlock(nn.Module):
+    def __init__(self, channels: int, dropout: float = 0.0):
         super().__init__()
-        assert dim % num_heads == 0, "dim should be divisible by num_heads"
-
-        self.num_heads = num_heads
-        self.head_dim = dim // num_heads
-
-        self.qkv = nn.Linear(dim, dim * 3, bias=qkv_bias)
-        self.q_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
-        self.k_norm = norm_layer(self.head_dim) if qk_norm else nn.Identity()
-        self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
-        self.proj_drop = nn.Dropout(proj_drop)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        # x: (B, N, C)
-        B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, self.head_dim)
-        qkv = qkv.permute(2, 0, 3, 1, 4)
-        q, k, v = qkv.unbind(0)
-
-        q, k = self.q_norm(q), self.k_norm(k)
-        q = q.to(v.dtype)
-        k = k.to(v.dtype)
-
-        x = F.scaled_dot_product_attention(
-            q, k, v,
-            dropout_p=self.attn_drop.p if self.training else 0.
-        )
-        x = x.transpose(1, 2).reshape(B, N, C)
-        x = self.proj(x)
-        x = self.proj_drop(x)
-        return x
-
-
-class SwiGLUFFN(nn.Module):
-    def __init__(
-        self,
-        in_features: int,
-        hidden_features: int,
-        out_features: int,
-        bias: bool = True,
-    ) -> None:
-        super().__init__()
-        self.w12 = nn.Linear(in_features, 2 * hidden_features, bias=bias)
-        self.w3 = nn.Linear(hidden_features, out_features, bias=bias)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        x12 = self.w12(x)
-        x1, x2 = x12.chunk(2, dim=-1)
-        hidden = F.silu(x1) * x2
-        return self.w3(hidden)
-
-
-class EncoderLayer(nn.Module):
-    def __init__(self, hidden_size, num_heads):
-        super().__init__()
-        mlp_ratio = 4.0
-
-        self.norm1 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-        self.norm2 = nn.LayerNorm(hidden_size, elementwise_affine=False, eps=1e-6)
-
-        self.attn = NormCausalAttention(hidden_size, num_heads=num_heads)
-
-        mlp_hidden_dim = int(hidden_size * mlp_ratio)
-        self.mlp = SwiGLUFFN(
-            hidden_size,
-            int(2 / 3 * mlp_hidden_dim),
-            hidden_size
+        self.net = nn.Sequential(
+            nn.GroupNorm(_num_groups(channels), channels),
+            nn.SiLU(),
+            nn.Conv1d(channels, channels, kernel_size=3, padding=1),
+            nn.Dropout(dropout),
+            nn.GroupNorm(_num_groups(channels), channels),
+            nn.SiLU(),
+            nn.Conv1d(channels, channels, kernel_size=3, padding=1),
         )
 
     def forward(self, x):
-        x = x + self.attn(self.norm1(x))
-        x = x + self.mlp(self.norm2(x))
-        return x
+        return x + self.net(x)
+
+
+class DownsampleBlock(nn.Module):
+    def __init__(self, channels: int, dropout: float = 0.0):
+        super().__init__()
+        self.res = ConvResBlock(channels, dropout=dropout)
+        self.down = nn.Conv1d(channels, channels, kernel_size=4, stride=2, padding=1)
+
+    def forward(self, x):
+        return self.down(self.res(x))
+
+
+class UpsampleBlock(nn.Module):
+    def __init__(self, channels: int, dropout: float = 0.0):
+        super().__init__()
+        self.conv = nn.Conv1d(channels, channels, kernel_size=3, padding=1)
+        self.res = ConvResBlock(channels, dropout=dropout)
+
+    def forward(self, x):
+        x = F.interpolate(x, scale_factor=2, mode="linear", align_corners=False)
+        return self.res(self.conv(x))
 
 
 class FIDEncoder(nn.Module):
@@ -96,49 +56,46 @@ class FIDEncoder(nn.Module):
         input_dim,
         hidden_size=128,
         num_layers=4,
-        num_heads=4,
-        latent_dim=64,
+        latent_dim=4,
+        latent_downsample=8,
+        dropout=0.0,
     ):
         super().__init__()
+        if latent_downsample < 1 or latent_downsample & (latent_downsample - 1) != 0:
+            raise ValueError("latent_downsample must be a power of two.")
 
-        self.conv = nn.Sequential(
-            nn.Conv1d(input_dim, hidden_size // 2, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-            nn.Conv1d(hidden_size // 2, hidden_size, kernel_size=3, stride=2, padding=1),
-            nn.ReLU(),
-        )
-
+        self.latent_downsample = latent_downsample
+        self.stem = nn.Conv1d(input_dim, hidden_size, kernel_size=7, padding=3)
+        self.down_blocks = nn.ModuleList([
+            DownsampleBlock(hidden_size, dropout=dropout)
+            for _ in range(int(math.log2(latent_downsample)))
+        ])
         self.layers = nn.ModuleList([
-            EncoderLayer(hidden_size, num_heads)
+            ConvResBlock(hidden_size, dropout=dropout)
             for _ in range(num_layers)
         ])
-
-        self.final_norm = nn.LayerNorm(hidden_size)
-        self.to_mu = nn.Linear(hidden_size, latent_dim)
-        self.to_logvar = nn.Linear(hidden_size, latent_dim)
+        self.final_norm = nn.GroupNorm(_num_groups(hidden_size), hidden_size)
+        self.final_act = nn.SiLU()
+        self.to_mu = nn.Conv1d(hidden_size, latent_dim, kernel_size=3, padding=1)
+        self.to_logvar = nn.Conv1d(hidden_size, latent_dim, kernel_size=3, padding=1)
 
     def forward(self, x):
         """
         x: (B, C, T)
         return:
-            mu:     (B, latent_dim)
-            logvar: (B, latent_dim)
+            mu:     (B, latent_dim, T // latent_downsample)
+            logvar: (B, latent_dim, T // latent_downsample)
         """
-        x = self.conv(x)              # (B, hidden, T')
-        x = x.permute(0, 2, 1)        # (B, T', hidden)
-
+        x = self.stem(x)
+        for block in self.down_blocks:
+            x = block(x)
         for layer in self.layers:
             x = layer(x)
 
-        x = self.final_norm(x)
+        x = self.final_act(self.final_norm(x))
 
-        # global pooling over time
-        x = x.mean(dim=1)             # (B, hidden)
-
-        mu = self.to_mu(x)            # (B, latent_dim)
-        logvar = self.to_logvar(x)    # (B, latent_dim)
-
-        # 可选：数值稳定
+        mu = self.to_mu(x)
+        logvar = self.to_logvar(x)
         logvar = torch.clamp(logvar, min=-6.0, max=6.0)
 
         return mu, logvar
@@ -151,39 +108,52 @@ class FIDDecoder(nn.Module):
         output_dim,
         hidden_size=128,
         seq_len=128,
+        num_layers=4,
+        latent_downsample=8,
+        dropout=0.0,
     ):
         super().__init__()
-
-        assert seq_len % 4 == 0, "seq_len must be divisible by 4"
+        if latent_downsample < 1 or latent_downsample & (latent_downsample - 1) != 0:
+            raise ValueError("latent_downsample must be a power of two.")
         self.seq_len = seq_len
         self.hidden_size = hidden_size
-        self.base_len = seq_len // 4
+        self.latent_dim = latent_dim
+        self.latent_downsample = latent_downsample
+        self.latent_seq_len = max(1, math.ceil(seq_len / latent_downsample))
+        self.register_buffer("seq_len_buffer", torch.tensor(seq_len, dtype=torch.long), persistent=True)
+        self.register_buffer("latent_downsample_buffer", torch.tensor(latent_downsample, dtype=torch.long), persistent=True)
 
-        self.fc = nn.Linear(latent_dim, hidden_size * self.base_len)
-
-        self.net = nn.Sequential(
-            nn.Conv1d(hidden_size, hidden_size, kernel_size=5, padding=2),
-            nn.ReLU(),
-            nn.Upsample(scale_factor=2, mode="nearest"),
-
-            nn.Conv1d(hidden_size, hidden_size // 2, kernel_size=5, padding=2),
-            nn.ReLU(),
-            nn.Upsample(scale_factor=2, mode="nearest"),
-
-            nn.Conv1d(hidden_size // 2, output_dim, kernel_size=5, padding=2),
+        self.in_proj = nn.Conv1d(latent_dim, hidden_size, kernel_size=3, padding=1)
+        self.layers = nn.ModuleList([
+            ConvResBlock(hidden_size, dropout=dropout)
+            for _ in range(num_layers)
+        ])
+        self.up_blocks = nn.ModuleList([
+            UpsampleBlock(hidden_size, dropout=dropout)
+            for _ in range(int(math.log2(latent_downsample)))
+        ])
+        self.out = nn.Sequential(
+            nn.GroupNorm(_num_groups(hidden_size), hidden_size),
+            nn.SiLU(),
+            nn.Conv1d(hidden_size, output_dim, kernel_size=3, padding=1),
         )
 
     def forward(self, z):
         """
-        z: (B, latent_dim)
+        z: (B, latent_dim, T // latent_downsample)
         return: (B, C, T)
         """
-        B = z.shape[0]
+        if z.ndim == 2:
+            z = z.view(z.shape[0], self.latent_dim, self.latent_seq_len)
 
-        x = self.fc(z)                                # (B, hidden * T/4)
-        x = x.view(B, self.hidden_size, self.base_len)
-        x = self.net(x)                               # (B, C, T)
-
+        x = self.in_proj(z)
+        for layer in self.layers:
+            x = layer(x)
+        for block in self.up_blocks:
+            x = block(x)
+        x = self.out(x)
+        if x.shape[-1] != self.seq_len:
+            x = F.interpolate(x, size=self.seq_len, mode="linear", align_corners=False)
         return x
 
 
@@ -195,20 +165,25 @@ class FIDVAE(nn.Module):
         seq_len,
         hidden_size=128,
         num_layers=4,
-        num_heads=4,
-        latent_dim=64,
+        latent_dim=4,
+        latent_downsample=8,
+        dropout=0.0,
         beta=0.001,
     ):
         super().__init__()
 
         self.beta = beta
+        self.latent_dim = latent_dim
+        self.latent_downsample = latent_downsample
+        self.latent_seq_len = max(1, math.ceil(seq_len / latent_downsample))
 
         self.encoder = FIDEncoder(
             input_dim=input_dim,
             hidden_size=hidden_size,
             num_layers=num_layers,
-            num_heads=num_heads,
             latent_dim=latent_dim,
+            latent_downsample=latent_downsample,
+            dropout=dropout,
         )
 
         self.decoder = FIDDecoder(
@@ -216,6 +191,9 @@ class FIDVAE(nn.Module):
             output_dim=output_dim,
             hidden_size=hidden_size,
             seq_len=seq_len,
+            num_layers=num_layers,
+            latent_downsample=latent_downsample,
+            dropout=dropout,
         )
 
     def reparameterize(self, mu, logvar):
@@ -227,7 +205,7 @@ class FIDVAE(nn.Module):
         """
         x: (B, C, T)
         returns:
-            mu, logvar, z with shape (B, latent_dim)
+            mu, logvar, z with shape (B, latent_dim, T // latent_downsample)
         """
         mu, logvar = self.encoder(x)
         z = self.reparameterize(mu, logvar)
@@ -239,12 +217,12 @@ class FIDVAE(nn.Module):
     def get_embedding(self, x, use_mu=True):
         """
         x: (B, C, T)
-        return: (B, latent_dim)
+        return: (B, latent_dim * latent_seq_len)
         """
         mu, logvar = self.encoder(x)
         if use_mu:
-            return mu
-        return self.reparameterize(mu, logvar)
+            return mu.flatten(1)
+        return self.reparameterize(mu, logvar).flatten(1)
 
     def forward(self, x):
         """
@@ -255,8 +233,8 @@ class FIDVAE(nn.Module):
 
         return {
             "recon": recon,
-            "mu": mu,
-            "logvar": logvar,
+            "mu": mu.flatten(1),
+            "logvar": logvar.flatten(1),
             "z": z,
         }
 
@@ -282,8 +260,8 @@ if __name__ == "__main__":
         seq_len=128,
         hidden_size=128,
         num_layers=2,
-        num_heads=8,
-        latent_dim=128,
+        latent_dim=4,
+        latent_downsample=8,
         beta=0.001,
     )
 
@@ -292,9 +270,9 @@ if __name__ == "__main__":
     out = model(x)
 
     print("recon:", out["recon"].shape)   # (8, 1, 128)
-    print("mu:", out["mu"].shape)         # (8, 128)
-    print("logvar:", out["logvar"].shape) # (8, 128)
-    print("z:", out["z"].shape)           # (8, 128)
+    print("mu:", out["mu"].shape)         # (8, latent_dim * latent_seq_len)
+    print("logvar:", out["logvar"].shape) # (8, latent_dim * latent_seq_len)
+    print("z:", out["z"].shape)           # (8, latent_dim, latent_seq_len)
 
     loss_dict = model.loss_function(
         x,
