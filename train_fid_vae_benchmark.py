@@ -4,6 +4,10 @@ import numpy as np
 import torch
 from torch.utils.data import DataLoader, Dataset
 from tqdm import tqdm
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 import sys
@@ -30,6 +34,7 @@ def get_args():
     parser.add_argument("--batch_size", type=int, default=64)
     parser.add_argument("--epochs", type=int, default=50)
     parser.add_argument("--lr", type=float, default=5e-4)
+    parser.add_argument("--weight_decay", type=float, default=1e-3)
 
     # model
     parser.add_argument("--hidden_size", type=int, default=128)
@@ -42,6 +47,9 @@ def get_args():
     # misc
     parser.add_argument("--save_dir", type=str, default="./fid_vae_ckpts/benchmark")
     parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--wandb", action="store_true")
+    parser.add_argument("--wandb_project", type=str, default="drifting-model")
+    parser.add_argument("--wandb_run_name", type=str, default=None)
     return parser.parse_args()
 
 
@@ -217,7 +225,7 @@ def train(args):
         latent_dim=args.latent_dim,
         beta=args.beta,
     ).to(device)
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.001)
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if args.one_channel:
         save_dir = os.path.join(args.save_dir, f"{args.dataset_name}_one_channel")
@@ -225,6 +233,25 @@ def train(args):
         save_dir = os.path.join(args.save_dir, args.dataset_name)
 
     os.makedirs(save_dir, exist_ok=True)
+
+    wb = None
+    if args.wandb:
+        if wandb is None:
+            raise ImportError("wandb is not installed. Please install wandb or run without --wandb.")
+        wb = wandb.init(
+            project=args.wandb_project,
+            name=args.wandb_run_name,
+            config={
+                **vars(args),
+                "train_size": len(train_dataset),
+                "val_size": len(val_dataset),
+                "input_channels": c,
+                "input_seq_len": t,
+                "save_dir": save_dir,
+            },
+            dir=save_dir,
+        )
+
     np.savez(
         os.path.join(save_dir, "dataset_metadata.npz"),
         dataset_name=np.array(args.dataset_name),
@@ -251,11 +278,30 @@ def train(args):
             flush=True,
         )
 
+        if wb is not None:
+            wandb.log(
+                {
+                    "train/loss": train_loss,
+                    "train/recon_loss": train_recon,
+                    "train/kl_loss": train_kl,
+                    "val/loss": val_loss,
+                    "val/recon_loss": val_recon,
+                    "val/kl_loss": val_kl,
+                    "val/best_loss": min(best_val_loss, val_loss),
+                    "epoch": epoch + 1,
+                    "lr": optimizer.param_groups[0]["lr"],
+                },
+                step=epoch + 1,
+            )
+
         torch.save(model.state_dict(), os.path.join(save_dir, "last.pt"))
         if val_loss < best_val_loss:
             best_val_loss = val_loss
             torch.save(model.state_dict(), os.path.join(save_dir, "best.pt"))
             print("Saved BEST model", flush=True)
+
+    if wb is not None:
+        wb.finish()
 
 
 if __name__ == "__main__":

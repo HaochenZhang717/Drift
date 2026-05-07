@@ -147,7 +147,8 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --ts_seq_len ${TSLEN} \
     --batch_size 128 \
     --epochs 100 \
-    --save_dir ./fid_vae_ckpts/benchmark_ercot_${TSLEN}
+    --save_dir ./fid_vae_ckpts/benchmark_ercot_${TSLEN} \
+    --wandb
 
   echo "========================================"
   echo "Running Household with TSLEN=${TSLEN}"
@@ -161,8 +162,8 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --ts_seq_len ${TSLEN} \
     --batch_size 128 \
     --epochs 100 \
-    --save_dir ./fid_vae_ckpts/benchmark_household_${TSLEN}
+    --save_dir ./fid_vae_ckpts/benchmark_household_${TSLEN} \
+    --wandb
 
 done
-
 
