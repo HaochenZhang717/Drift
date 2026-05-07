@@ -28,6 +28,9 @@ def get_args():
     parser.add_argument("--datasets_dir", type=str, required=True)
     parser.add_argument("--rel_path", type=str, required=True)
     parser.add_argument("--ts_seq_len", type=int, default=256)
+    parser.add_argument("--window_stride", type=int, default=None)
+    parser.add_argument("--ts_stride", type=int, default=None)
+    parser.add_argument("--stride", type=int, default=None)
     parser.add_argument("--train_split", type=str, default="train", choices=["train"])
     parser.add_argument("--val_split", type=str, default="test", choices=["test"])
 
@@ -119,7 +122,13 @@ class BenchmarkTensorDataset(Dataset):
 
 
 def _make_dataset_config(args, flag):
-    return {
+    stride = args.window_stride
+    if stride is None:
+        stride = args.ts_stride
+    if stride is None:
+        stride = args.stride
+
+    config = {
         "name": args.dataset_name,
         "data": args.data,
         "datasets_dir": args.datasets_dir,
@@ -129,6 +138,11 @@ def _make_dataset_config(args, flag):
         "seq_len": args.ts_seq_len,
         "flag": flag,
     }
+    if stride is not None:
+        config["window_stride"] = stride
+        config["ts_stride"] = stride
+        config["stride"] = stride
+    return config
 
 
 def load_benchmark_datasets(args):
@@ -287,6 +301,9 @@ def train(args):
         data=np.array(args.data),
         rel_path=np.array(args.rel_path),
         ts_seq_len=np.array(args.ts_seq_len, dtype=np.int64),
+        window_stride=np.array(-1 if args.window_stride is None else args.window_stride, dtype=np.int64),
+        ts_stride=np.array(-1 if args.ts_stride is None else args.ts_stride, dtype=np.int64),
+        stride=np.array(-1 if args.stride is None else args.stride, dtype=np.int64),
         train_size=np.array(len(train_dataset), dtype=np.int64),
         val_size=np.array(len(val_dataset), dtype=np.int64),
         extra_scale=np.array(False, dtype=bool),
