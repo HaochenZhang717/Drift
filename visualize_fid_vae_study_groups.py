@@ -132,6 +132,7 @@ def infer_model_kwargs(state_dict, seq_len):
                 layer_ids.add(int(rest.split(".", 1)[0]))
         num_layers = max(layer_ids) + 1 if layer_ids else 2
         latent_downsample = int(state_dict.get("decoder.latent_downsample_buffer", torch.tensor(8)).item())
+        decoder_upsample_rate = int(state_dict.get("decoder.decoder_upsample_rate_buffer", torch.tensor(4)).item())
         if "decoder.seq_len_buffer" in state_dict:
             seq_len = int(state_dict["decoder.seq_len_buffer"].item())
         return {
@@ -142,6 +143,7 @@ def infer_model_kwargs(state_dict, seq_len):
             "num_layers": num_layers,
             "latent_dim": latent_dim,
             "latent_downsample": latent_downsample,
+            "decoder_upsample_rate": decoder_upsample_rate,
         }
 
     if "encoder.conv.0.weight" not in state_dict or "encoder.conv.2.weight" not in state_dict:

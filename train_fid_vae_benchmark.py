@@ -227,6 +227,9 @@ def train(args):
         dropout=args.dropout,
         beta=args.beta,
     ).to(device)
+
+    print(model)
+    breakpoint()
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     if args.one_channel:

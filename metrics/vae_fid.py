@@ -151,6 +151,9 @@ def _infer_vae_hparams_from_state(state_dict):
         latent_downsample = int(
             state_dict.get("decoder.latent_downsample_buffer", torch.tensor(inferred_downsample)).item()
         )
+        decoder_upsample_rate = int(
+            state_dict.get("decoder.decoder_upsample_rate_buffer", torch.tensor(4)).item()
+        )
         if "decoder.seq_len_buffer" not in state_dict:
             raise ValueError("New FIDVAE checkpoint is missing decoder.seq_len_buffer; please retrain or pass hparams explicitly.")
         seq_len = int(state_dict["decoder.seq_len_buffer"].item())
@@ -160,6 +163,7 @@ def _infer_vae_hparams_from_state(state_dict):
             "num_layers": num_layers,
             "seq_len": seq_len,
             "latent_downsample": latent_downsample,
+            "decoder_upsample_rate": decoder_upsample_rate,
         }
 
     # encoder.to_mu.weight: (latent_dim, hidden_size)
@@ -246,6 +250,7 @@ def VAE_FID(
         num_layers=hp["num_layers"],
         latent_dim=hp["latent_dim"],
         latent_downsample=hp.get("latent_downsample", 8),
+        decoder_upsample_rate=hp.get("decoder_upsample_rate", 4),
     ).to(device).eval()
     model = _load_model_state(model, state_dict)
     # print("real_tensor size:", real_tensor.shape)

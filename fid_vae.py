@@ -40,13 +40,14 @@ class DownsampleBlock(nn.Module):
 
 
 class UpsampleBlock(nn.Module):
-    def __init__(self, channels: int, dropout: float = 0.0):
+    def __init__(self, channels: int, scale_factor: int = 4, dropout: float = 0.0):
         super().__init__()
+        self.scale_factor = scale_factor
         self.conv = nn.Conv1d(channels, channels, kernel_size=3, padding=1)
         self.res = ConvResBlock(channels, dropout=dropout)
 
     def forward(self, x):
-        x = F.interpolate(x, scale_factor=2, mode="linear", align_corners=False)
+        x = F.interpolate(x, scale_factor=self.scale_factor, mode="linear", align_corners=False)
         return self.res(self.conv(x))
 
 
@@ -110,27 +111,33 @@ class FIDDecoder(nn.Module):
         seq_len=128,
         num_layers=4,
         latent_downsample=8,
+        decoder_upsample_rate=4,
         dropout=0.0,
     ):
         super().__init__()
         if latent_downsample < 1 or latent_downsample & (latent_downsample - 1) != 0:
             raise ValueError("latent_downsample must be a power of two.")
+        if decoder_upsample_rate < 1:
+            raise ValueError("decoder_upsample_rate must be positive.")
         self.seq_len = seq_len
         self.hidden_size = hidden_size
         self.latent_dim = latent_dim
         self.latent_downsample = latent_downsample
+        self.decoder_upsample_rate = decoder_upsample_rate
         self.latent_seq_len = max(1, math.ceil(seq_len / latent_downsample))
         self.register_buffer("seq_len_buffer", torch.tensor(seq_len, dtype=torch.long), persistent=True)
         self.register_buffer("latent_downsample_buffer", torch.tensor(latent_downsample, dtype=torch.long), persistent=True)
+        self.register_buffer("decoder_upsample_rate_buffer", torch.tensor(decoder_upsample_rate, dtype=torch.long), persistent=True)
 
         self.in_proj = nn.Conv1d(latent_dim, hidden_size, kernel_size=3, padding=1)
         self.layers = nn.ModuleList([
             ConvResBlock(hidden_size, dropout=dropout)
             for _ in range(num_layers)
         ])
+        num_upsample_blocks = int(math.log(latent_downsample, decoder_upsample_rate))
         self.up_blocks = nn.ModuleList([
-            UpsampleBlock(hidden_size, dropout=dropout)
-            for _ in range(int(math.log2(latent_downsample)))
+            UpsampleBlock(hidden_size, scale_factor=decoder_upsample_rate, dropout=dropout)
+            for _ in range(num_upsample_blocks)
         ])
         self.out = nn.Sequential(
             nn.GroupNorm(_num_groups(hidden_size), hidden_size),
@@ -167,6 +174,7 @@ class FIDVAE(nn.Module):
         num_layers=4,
         latent_dim=4,
         latent_downsample=8,
+        decoder_upsample_rate=4,
         dropout=0.0,
         beta=0.001,
     ):
@@ -193,6 +201,7 @@ class FIDVAE(nn.Module):
             seq_len=seq_len,
             num_layers=num_layers,
             latent_downsample=latent_downsample,
+            decoder_upsample_rate=decoder_upsample_rate,
             dropout=dropout,
         )
 
