@@ -1,4 +1,5 @@
 import argparse
+import json
 from pathlib import Path
 from typing import Dict, Tuple
 
@@ -132,6 +133,7 @@ def main() -> None:
     parser.add_argument("--num_samples", type=int, default=2000)
     parser.add_argument("--num_repeats", type=int, default=10)
     parser.add_argument("--seed", type=int, default=2026)
+    parser.add_argument("--save_json", type=str, default=None, help="Optional path to save full repeated-eval results.")
     parser.add_argument("--print_stats", action="store_true")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--vae_ckpt_root", type=str, default=None)
@@ -222,12 +224,17 @@ def main() -> None:
                 "fid_mean": float(repeat_fids.mean()),
                 "fid_std": float(repeat_fids.std()),
                 "fid_var": float(repeat_fids.var()),
+                "fid_median": float(np.median(repeat_fids)),
+                "fid_ci95_low": float(np.percentile(repeat_fids, 2.5)),
+                "fid_ci95_high": float(np.percentile(repeat_fids, 97.5)),
                 "fid_values": [float(x) for x in repeat_fids.tolist()],
             }
             dataset_results.append(result)
             print(
                 f"{dataset_name}: vae_fid_mean={result['fid_mean']:.6f}, "
                 f"std={result['fid_std']:.6f}, var={result['fid_var']:.6f}, "
+                f"median={result['fid_median']:.6f}, "
+                f"ci95=[{result['fid_ci95_low']:.6f}, {result['fid_ci95_high']:.6f}], "
                 f"n={result['num_samples']}, repeats={result['num_repeats']}, file={result['pt_path']}"
             )
         all_results[dataset_name] = dataset_results
@@ -239,8 +246,22 @@ def main() -> None:
             print(
                 f"{dataset_name}\t{Path(result['pt_path']).name}\t"
                 f"{result['fid_mean']:.6f}\t{result['fid_std']:.6f}\t{result['fid_var']:.6f}\t"
+                f"{result['fid_median']:.6f}\t"
+                f"{result['fid_ci95_low']:.6f}\t{result['fid_ci95_high']:.6f}\t"
                 f"{result['num_samples']}\t{result['num_repeats']}"
             )
+
+    if args.save_json:
+        out_path = Path(args.save_json)
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        payload = {
+            "num_samples": int(args.num_samples),
+            "num_repeats": int(args.num_repeats),
+            "seed": int(args.seed),
+            "results": all_results,
+        }
+        out_path.write_text(json.dumps(payload, indent=2))
+        print(f"Saved repeated-eval results to {out_path}")
 
 
 if __name__ == "__main__":
