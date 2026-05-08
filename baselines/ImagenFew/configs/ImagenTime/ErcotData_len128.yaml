@@ -5,11 +5,11 @@ learning_rate: 0.0001
 weight_decay: 0.00001
 # transform:
 use_stft: false
-delay: 12
-embedding: 12
+delay: 16
+embedding: 16
 # model:
 handler: models.ImagenTime.handler
-img_resolution: 12
+img_resolution: 16
 unet_channels: 32
 ch_mult: [1,2,2,4]
 attn_resolution: [8,4,2]

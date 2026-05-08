@@ -44,6 +44,22 @@ torch.multiprocessing.set_sharing_strategy('file_system')
 from importlib import import_module
 
 
+def _configure_run_file_logger(args):
+    run_root = os.path.dirname(args.log_dir)
+    os.makedirs(run_root, exist_ok=True)
+    log_path = os.path.join(run_root, "train.log")
+    root_logger = logging.getLogger()
+    abs_log_path = os.path.abspath(log_path)
+    for handler in root_logger.handlers:
+        if isinstance(handler, logging.FileHandler) and os.path.abspath(handler.baseFilename) == abs_log_path:
+            return
+    file_handler = logging.FileHandler(log_path)
+    file_handler.setLevel(logging.INFO)
+    file_handler.setFormatter(logging.Formatter("%(asctime)s - %(levelname)s - %(message)s"))
+    root_logger.addHandler(file_handler)
+    logging.info("Run log file: %s", log_path)
+
+
 def _extract_real_tensor(dataset):
     if hasattr(dataset, "primary_tensor"):
         return dataset.primary_tensor
@@ -79,6 +95,7 @@ def main(args):
     
     # Model name and directory
     name = create_model_name_and_dir(args)
+    _configure_run_file_logger(args)
 
     # set-up neptune logger. switch to your desired logger
     with CompositeLogger([NeptuneLogger(), PrintLogger()]) if args.neptune and is_main_process() \
@@ -95,6 +112,15 @@ def main(args):
         # Setup Data
         dataset_loader, samplers, trainsets, metadatas = data_provider(args)
         args.n_classes = dataset_loader.num_datasets
+        for dataset_name in args.train_on_datasets:
+            train_count = len(trainsets[dataset_name])
+            valid_count = len(dataset_loader.testsets[dataset_name])
+            logging.info(
+                "Dataset %s sample count -> train: %d, valid: %d",
+                dataset_name,
+                train_count,
+                valid_count,
+            )
         if len(args.datasets) > 1:
             logging.info(f'all datasets are ready - Total number of sequences: {sum([len(trainset) for keya, trainset in trainsets.items()])}')
         else:

@@ -28,6 +28,8 @@ datasets:
   - name: HouseholdData
     data: HouseholdData
     rel_path: HouseHold_6.csv
+    window_stride: 10
+    ts_stride: 10
     stride: 10
 train_on_datasets:
   - HouseholdData
