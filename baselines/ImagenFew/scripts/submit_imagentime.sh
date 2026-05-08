@@ -17,5 +17,5 @@ CONFIGS=(
 
 for cfg in "${CONFIGS[@]}"; do
   echo "Submitting ${cfg}"
-  CONDA_ENV=vlm sbatch "${ROOT_DIR}/scripts/run_imagentime.sh" "${cfg}"
+  sbatch "${ROOT_DIR}/scripts/run_imagentime.sh" "${cfg}"
 done
