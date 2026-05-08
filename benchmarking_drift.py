@@ -21,10 +21,10 @@ from img_transformations import DelayEmbedder
 
 
 from models.unconditional_model import DriftDiT_Tiny, DriftDiT_Small, DriftDiT_models
+from models.vqvae import VQVAE
 from drifting import (
     compute_V,
 )
-from feature_extractors.ts2vec.models.encoder import TSEncoder
 from utils.utils_drift import (
     EMA,
     WarmupLRScheduler,
@@ -91,12 +91,26 @@ def build_config(args: argparse.Namespace) -> Dict[str, Any]:
         "ts_seq_len",
         "ts_delay",
         "ts_embedding",
+        "window_stride",
         "ts_stride",
+        "stride",
 
         "dataset_name",
         "data",
         "datasets_dir",
         "rel_path",
+        "rel_path_train",
+        "rel_path_valid",
+        "drift_loss_mode",
+        "vqvae_ckpt_path",
+        "vqvae_hidden_size",
+        "vqvae_num_layers",
+        "vqvae_code_dim",
+        "vqvae_num_codes",
+        "vqvae_latent_downsample",
+        "vqvae_decoder_upsample_rate",
+        "vqvae_dropout",
+        "vqvae_commitment_weight",
     ]
 
     config = {key: getattr(args, key) for key in config_keys}
@@ -104,58 +118,46 @@ def build_config(args: argparse.Namespace) -> Dict[str, Any]:
         config["in_channels"] = 1
     return config
 
-
-
-
-
-def _strip_module_prefix(state_dict: dict) -> dict:
-    if not state_dict:
-        return state_dict
-    if not all(k.startswith("module.") for k in state_dict.keys()):
-        return state_dict
-    return {k[len("module."):]: v for k, v in state_dict.items()}
-
-
-def load_ts_feature_encoder_from_ckpt(
+def load_vqvae_feature_encoder_from_ckpt(
     ckpt_path: str,
     device: torch.device,
-) -> nn.Module:
-    """
-    Load a pretrained TS encoder checkpoint and return a frozen TSEncoder.
-    Supports checkpoints saved by train_full_series_ts2vec_glucose.py.
-    """
-    ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-    metadata = ckpt.get("metadata", {})
-    required = ["input_dims", "output_dims", "hidden_dims", "depth", "mask_prob"]
-    missing = [k for k in required if k not in metadata]
-    if missing:
-        raise ValueError(
-            f"Missing fields {missing} in TS encoder checkpoint metadata at {ckpt_path}"
-        )
-
-    encoder = TSEncoder(
-        input_dims=metadata["input_dims"],
-        output_dims=metadata["output_dims"],
-        hidden_dims=metadata["hidden_dims"],
-        depth=metadata["depth"],
-        mask_prob=metadata["mask_prob"],
+    *,
+    input_dim: int,
+    seq_len: int,
+    hidden_size: int,
+    num_layers: int,
+    code_dim: int,
+    num_codes: int,
+    latent_downsample: int,
+    decoder_upsample_rate: int,
+    dropout: float,
+    commitment_weight: float,
+) -> VQVAE:
+    model = VQVAE(
+        input_dim=input_dim,
+        output_dim=input_dim,
+        seq_len=seq_len,
+        hidden_size=hidden_size,
+        num_layers=num_layers,
+        code_dim=code_dim,
+        num_codes=num_codes,
+        latent_downsample=latent_downsample,
+        decoder_upsample_rate=decoder_upsample_rate,
+        dropout=dropout,
+        commitment_weight=commitment_weight,
     ).to(device)
-
-    state_dict = ckpt.get("model_state_dict")
-    if state_dict is None:
-        raise ValueError(f"Checkpoint at {ckpt_path} does not contain model_state_dict")
-    state_dict = _strip_module_prefix(state_dict)
-    encoder.load_state_dict(state_dict, strict=True)
-    encoder.eval()
-    for param in encoder.parameters():
+    state_dict = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+    model.load_state_dict(state_dict, strict=True)
+    model.eval()
+    for param in model.parameters():
         param.requires_grad = False
-    return encoder
+    return model
 
 
 def compute_drifting_loss(
     x_gen: torch.Tensor,
     x_pos: torch.Tensor,
-    feature_encoder: Optional[nn.Module],
+    feature_encoders: Optional[list],
     temperatures: list,
     ts_loss_config: Optional[dict] = None,
 ) -> tuple:
@@ -165,31 +167,28 @@ def compute_drifting_loss(
     rep_gen = delay_images_to_series(x_gen, ts_loss_config, device)
     rep_pos = delay_images_to_series(x_pos, ts_loss_config, device)
 
-    if feature_encoder is None:
-        feat_gen_list = [rep_gen.flatten(start_dim=1)]
-        feat_pos_list = [rep_pos.flatten(start_dim=1)]
-    else:
-        feat_gen_seq = feature_encoder(rep_gen, mask="all_true")
-        with torch.no_grad():
-            feat_pos_seq = feature_encoder(rep_pos, mask="all_true")
+    if not feature_encoders:
+        feature_encoders = ["raw_ts"]
 
-        if isinstance(feature_encoder, TSEncoder):
-            feat_gen = F.max_pool1d(
-                feat_gen_seq.transpose(1, 2),
-                kernel_size=feat_gen_seq.size(1),
-            ).squeeze(-1)
+    feat_gen_list = []
+    feat_pos_list = []
+    for encoder in feature_encoders:
+        if encoder == "raw_ts":
+            feat_gen = rep_gen.flatten(start_dim=1)
+            feat_pos = rep_pos.flatten(start_dim=1)
+        elif isinstance(encoder, VQVAE):
+            rep_gen_vq = rep_gen.transpose(1, 2).contiguous()  # (B, C, T)
+            rep_pos_vq = rep_pos.transpose(1, 2).contiguous()  # (B, C, T)
+            feat_gen = encoder.get_embedding(rep_gen_vq)
+            with torch.no_grad():
+                feat_pos = encoder.get_embedding(rep_pos_vq)
             feat_gen = F.normalize(feat_gen, p=2, dim=1)
-
-            feat_pos = F.max_pool1d(
-                feat_pos_seq.transpose(1, 2),
-                kernel_size=feat_pos_seq.size(1),
-            ).squeeze(-1)
             feat_pos = F.normalize(feat_pos, p=2, dim=1)
         else:
-            raise ValueError("feature_encoder must be an instance of [TSEncoder,]")
+            raise ValueError(f"Unsupported feature encoder type: {type(encoder)}")
 
-        feat_gen_list = [feat_gen]
-        feat_pos_list = [feat_pos]
+        feat_gen_list.append(feat_gen)
+        feat_pos_list.append(feat_pos)
 
     total_loss = torch.tensor(0.0, device=device, requires_grad=True)
     total_drift_norm = 0.0
@@ -249,7 +248,7 @@ def train_step(
     queue: SampleQueue,
     config: dict,
     device: torch.device,
-    feature_encoder: Optional[nn.Module] = None,
+    feature_encoders: Optional[list] = None,
 ) -> dict:
     """
     Single training step (Algorithm 1).
@@ -291,7 +290,7 @@ def train_step(
     loss, info = compute_drifting_loss(
         x_gen,
         x_pos,
-        feature_encoder,
+        feature_encoders,
         temperatures,
         ts_loss_config=ts_loss_config,
     )
@@ -451,7 +450,6 @@ def train(
     vae_ckpt_root: Optional[str] = None,
     vae_ckpt_name: str = "best.pt",
     fid_monitor_split: str = "train",
-    ts_feature_encoder_ckpt: Optional[str] = None,
     batch_size: int = 256,
     argparse_config: Optional[Dict[str, Any]] = None,
     eval_splits: Optional[list] = None,
@@ -465,7 +463,6 @@ def train(
     config["eval_step_interval"] = eval_step_interval
     config["eval_num_samples"] = eval_num_samples
     config["metric_iteration"] = metric_iteration
-    config["ts_feature_encoder_ckpt"] = ts_feature_encoder_ckpt
     config["train_batch_size"] = batch_size
     config["dataset"] = (
         f"{config['dataset_name']}_one_channel"
@@ -475,7 +472,7 @@ def train(
     # config["dataset"] = config["data"]
 
     eval_splits = eval_splits or ["train", "test"]
-    if ts_feature_encoder_ckpt is not None:
+    if config.get("drift_loss_mode") in {"vqvae", "both"}:
         config["use_feature_encoder"] = True
     wandb_config = dict(argparse_config) if argparse_config is not None else dict(config)
     wandb_config["resolved_training_config"] = dict(config)
@@ -502,6 +499,12 @@ def train(
                 dir=str(output_dir),
             )
 
+    effective_stride = config.get("window_stride")
+    if effective_stride is None:
+        effective_stride = config.get("ts_stride")
+    if effective_stride is None:
+        effective_stride = config.get("stride")
+
     dataset_config = {
         "name": config["dataset_name"],
         "data": config["data"],  # 对应 data_dict 的 key
@@ -510,6 +513,14 @@ def train(
         "seq_len": config["ts_seq_len"],  # get_train 会写入，但底层 verbal_ts 实际不使用这个字段
         "flag": "train",  # get_train/get_test 会覆盖这个
     }
+    if config.get("rel_path_train") is not None:
+        dataset_config["rel_path_train"] = config["rel_path_train"]
+    if config.get("rel_path_valid") is not None:
+        dataset_config["rel_path_valid"] = config["rel_path_valid"]
+    if effective_stride is not None:
+        dataset_config["window_stride"] = int(effective_stride)
+        dataset_config["ts_stride"] = int(effective_stride)
+        dataset_config["stride"] = int(effective_stride)
 
     train_dataset = get_train(dataset_config.copy())  # torch.utils.data.Dataset
     test_dataset = get_test(dataset_config.copy())
@@ -581,16 +592,38 @@ def train(
         sample_shape=(config["in_channels"], config["img_size"], config["img_size"]),
     )
 
-    # Feature encoder
-    feature_encoder = None
-    if ts_feature_encoder_ckpt is not None:
-        print(f"Loading time-series feature encoder from {ts_feature_encoder_ckpt}")
-        feature_encoder = load_ts_feature_encoder_from_ckpt(
-            ts_feature_encoder_ckpt,
+    # Feature encoders used by drifting loss.
+    feature_encoders = []
+    if config.get("drift_loss_mode") in {"time_series", "both"}:
+        feature_encoders.append("raw_ts")
+
+    if config.get("drift_loss_mode") in {"vqvae", "both"}:
+        vqvae_ckpt_path = config.get("vqvae_ckpt_path")
+        if not vqvae_ckpt_path:
+            raise ValueError(
+                "drift_loss_mode is 'vqvae' or 'both', but --vqvae_ckpt_path is missing."
+            )
+        print(f"Loading VQVAE feature encoder from {vqvae_ckpt_path}")
+        vq_feature_encoder = load_vqvae_feature_encoder_from_ckpt(
+            vqvae_ckpt_path,
             device,
+            input_dim=config["in_channels"],
+            seq_len=config["ts_seq_len"],
+            hidden_size=config["vqvae_hidden_size"],
+            num_layers=config["vqvae_num_layers"],
+            code_dim=config["vqvae_code_dim"],
+            num_codes=config["vqvae_num_codes"],
+            latent_downsample=config["vqvae_latent_downsample"],
+            decoder_upsample_rate=config["vqvae_decoder_upsample_rate"],
+            dropout=config["vqvae_dropout"],
+            commitment_weight=config["vqvae_commitment_weight"],
         )
+        feature_encoders.append(vq_feature_encoder)
         config["use_feature_encoder"] = True
-        print("Using pretrained TS feature encoder for drifting loss.")
+        print("Using pretrained VQVAE feature encoder for drifting loss.")
+
+    if not feature_encoders:
+        raise ValueError("No loss feature source selected. Check drift_loss_mode and encoder args.")
 
     start_epoch = 0
     global_step = 0
@@ -629,7 +662,7 @@ def train(
                 queue,
                 config,
                 device,
-                feature_encoder,
+                feature_encoders,
             )
 
             # Update EMA and scheduler
@@ -1093,12 +1126,6 @@ def main():
         help="Split used to monitor best vaeFID and save checkpoint_best_fid.pt.",
     )
     parser.add_argument(
-        "--ts_feature_encoder_ckpt",
-        type=str,
-        default=None,
-        help="Path to pretrained TS encoder checkpoint (full_series_ts2vec_glucose.pt).",
-    )
-    parser.add_argument(
         "--batch_size",
         type=int,
         default=256,
@@ -1120,20 +1147,47 @@ def main():
     parser.add_argument("--epochs", type=int, default=100)
     parser.add_argument("--use_feature_encoder", action="store_true")
     parser.add_argument("--loss_domain", type=str, default="time_series", choices=["time_series"])
+    parser.add_argument(
+        "--drift_loss_mode",
+        type=str,
+        default="time_series",
+        choices=["time_series", "vqvae", "both"],
+        help="Loss feature space: raw time-series only, VQVAE only, or both.",
+    )
     parser.add_argument("--queue_size", type=int, default=1280)
 
     parser.add_argument("--ts_seq_len", type=int, default=128)
     parser.add_argument("--ts_delay", type=int, default=12)
     parser.add_argument("--ts_embedding", type=int, default=12)
+    parser.add_argument("--window_stride", type=int, default=None)
     parser.add_argument("--ts_stride", "--glucose_stride", dest="ts_stride", type=int, default=128)
+    parser.add_argument("--stride", type=int, default=None)
+
+    parser.add_argument("--vqvae_ckpt_path", type=str, default=None, help="Path to trained VQVAE checkpoint (e.g., best.pt).")
+    parser.add_argument("--vqvae_hidden_size", type=int, default=32)
+    parser.add_argument("--vqvae_num_layers", type=int, default=1)
+    parser.add_argument("--vqvae_code_dim", type=int, default=8)
+    parser.add_argument("--vqvae_num_codes", type=int, default=150)
+    parser.add_argument("--vqvae_latent_downsample", type=int, default=16)
+    parser.add_argument("--vqvae_decoder_upsample_rate", type=int, default=4)
+    parser.add_argument("--vqvae_dropout", type=float, default=0.1)
+    parser.add_argument("--vqvae_commitment_weight", type=float, default=0.25)
 
 
     parser.add_argument("--dataset_name", type=str, required=True)
     parser.add_argument("--data", type=str, required=True)
     parser.add_argument("--datasets_dir", type=str, required=True)
-    parser.add_argument("--rel_path", type=str, required=True)
+    parser.add_argument("--rel_path", type=str, default=None)
+    parser.add_argument("--rel_path_train", type=str, default=None)
+    parser.add_argument("--rel_path_valid", type=str, default=None)
 
     args = parser.parse_args()
+    if args.rel_path is None and not (args.rel_path_train and args.rel_path_valid):
+        parser.error(
+            "Provide --rel_path, or provide both --rel_path_train and --rel_path_valid."
+        )
+    if args.rel_path is None:
+        args.rel_path = args.rel_path_train
     config = build_config(args)
 
     train(
@@ -1157,7 +1211,6 @@ def main():
         vae_ckpt_root=args.vae_ckpt_root,
         vae_ckpt_name=args.vae_ckpt_name,
         fid_monitor_split=args.fid_monitor_split,
-        ts_feature_encoder_ckpt=args.ts_feature_encoder_ckpt,
         batch_size=args.batch_size,
         argparse_config=vars(args),
         eval_splits=args.eval_splits,

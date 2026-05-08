@@ -26,7 +26,9 @@ def get_args():
     parser.add_argument("--dataset_name", type=str, required=True)
     parser.add_argument("--data", type=str, required=True)
     parser.add_argument("--datasets_dir", type=str, required=True)
-    parser.add_argument("--rel_path", type=str, required=True)
+    parser.add_argument("--rel_path", type=str, default=None)
+    parser.add_argument("--rel_path_train", type=str, default=None)
+    parser.add_argument("--rel_path_valid", type=str, default=None)
     parser.add_argument("--ts_seq_len", type=int, default=256)
     parser.add_argument("--window_stride", type=int, default=None)
     parser.add_argument("--ts_stride", type=int, default=None)
@@ -56,7 +58,15 @@ def get_args():
     parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--wandb_project", type=str, default="drifting-model")
     parser.add_argument("--wandb_run_name", type=str, default=None)
-    return parser.parse_args()
+    args = parser.parse_args()
+    if args.rel_path is None and not (args.rel_path_train and args.rel_path_valid):
+        parser.error(
+            "Provide --rel_path, or provide both --rel_path_train and --rel_path_valid."
+        )
+    if args.rel_path is None:
+        # Use train path as a safe fallback for fields that still expect rel_path.
+        args.rel_path = args.rel_path_train
+    return args
 
 
 def _extract_series(item):
@@ -138,6 +148,10 @@ def _make_dataset_config(args, flag):
         "seq_len": args.ts_seq_len,
         "flag": flag,
     }
+    if args.rel_path_train is not None:
+        config["rel_path_train"] = args.rel_path_train
+    if args.rel_path_valid is not None:
+        config["rel_path_valid"] = args.rel_path_valid
     if stride is not None:
         config["window_stride"] = stride
         config["ts_stride"] = stride
