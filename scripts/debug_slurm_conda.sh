@@ -11,6 +11,35 @@ echo "===== JOB INFO ====="
 hostname
 nvidia-smi
 
+echo "===== CHECK PLAYPEN PATH ACCESS ====="
+check_path_access() {
+  local p="$1"
+  if [ ! -e "$p" ]; then
+    echo "[MISS] $p (does not exist)"
+    return
+  fi
+
+  local r="-"
+  local x="-"
+  local list="-"
+  [ -r "$p" ] && r="r"
+  [ -x "$p" ] && x="x"
+  if ls -ld "$p" >/dev/null 2>&1; then
+    list="ok"
+  fi
+
+  if [ "$r" = "r" ] && [ "$x" = "x" ] && [ "$list" = "ok" ]; then
+    echo "[PASS] $p (read/list accessible)"
+  else
+    echo "[FAIL] $p (r=$r x=$x list=$list)"
+  fi
+}
+
+for i in 2 3 4 5 6 7 8 9; do
+  check_path_access "/mnt/unites${i}/playpen/haochenz"
+done
+check_path_access "/playpen/haochenz"
+
 echo "===== LOAD CONDA ====="
 # 清掉可能污染的 conda
 unset -f conda __conda_activate __conda_exe __conda_hashr
