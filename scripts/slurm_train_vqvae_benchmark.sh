@@ -12,7 +12,7 @@
 
 set -euo pipefail
 
-ROOT_DIR="${SLURM_SUBMIT_DIR:-/playpen-shared/haochenz/Drift}"
+ROOT_DIR="/playpen-shared/haochenz/Drift"
 cd "$ROOT_DIR"
 
 mkdir -p /playpen-shared/haochenz/logs/slurm
@@ -22,7 +22,7 @@ source ~/.zshrc >/dev/null 2>&1 || true
 CONDA_BIN="/playpen-shared/haochenz/miniconda3/bin/conda"
 
 eval "$("$CONDA_BIN" shell.bash hook)"
-conda activate "${CONDA_ENV:-vlm}"
+conda activate vlm
 
 echo "Running from: $ROOT_DIR"
 echo "Conda env: ${CONDA_DEFAULT_ENV:-unknown}"
