@@ -1,6 +1,6 @@
 #!/bin/bash
 #SBATCH --job-name=test-conda
-#SBATCH --partition=blackwell
+#SBATCH --partition=all
 #SBATCH --gres=gpu:1
 #SBATCH --cpus-per-task=2
 #SBATCH --mem=8G
