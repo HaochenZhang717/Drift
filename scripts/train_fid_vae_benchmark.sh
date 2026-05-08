@@ -204,7 +204,7 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --rel_path_train "glucose_train.parquet" \
     --rel_path_valid "glucose_valid.parquet" \
     --ts_seq_len ${TSLEN} \
-    --window_stride 32 \
+    --window_stride 128 \
     --batch_size 128 \
     --epochs 100 \
     --lr 5e-4 \
