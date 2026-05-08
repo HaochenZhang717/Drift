@@ -86,7 +86,6 @@ python benchmarking_drift.py \
   --grad_clip 1.0 \
   --ema_decay 0.999 \
   --warmup_steps 1000 \
-  --loss_domain time_series \
   --drift_loss_mode "${DRIFT_LOSS_MODE}" \
   --queue_size 1280 \
   --ts_seq_len "${TS_LEN}" \
