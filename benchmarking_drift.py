@@ -182,8 +182,7 @@ def compute_drifting_loss(
             feat_gen = encoder.get_embedding(rep_gen_vq)
             with torch.no_grad():
                 feat_pos = encoder.get_embedding(rep_pos_vq)
-            feat_gen = F.normalize(feat_gen, p=2, dim=1)
-            feat_pos = F.normalize(feat_pos, p=2, dim=1)
+            breakpoint()
         else:
             raise ValueError(f"Unsupported feature encoder type: {type(encoder)}")
 

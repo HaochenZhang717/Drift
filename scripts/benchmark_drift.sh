@@ -17,120 +17,93 @@ cd "$ROOT_DIR"
 mkdir -p "$ROOT_DIR/logs/slurm"
 
 source ~/.zshrc >/dev/null 2>&1 || true
-if [[ -n "${CONDA_ENV:-}" ]]; then
-  CONDA_BIN=""
-  if [[ -x "/playpen/haochenz/miniconda3/bin/conda" ]]; then
-    CONDA_BIN="/playpen/haochenz/miniconda3/bin/conda"
-  elif [[ -x "/playpen-shared/haochenz/miniconda3/bin/conda" ]]; then
-    CONDA_BIN="/playpen-shared/haochenz/miniconda3/bin/conda"
-  elif [[ -x "$HOME/miniconda3/bin/conda" ]]; then
-    CONDA_BIN="$HOME/miniconda3/bin/conda"
-  elif [[ -x "$HOME/anaconda3/bin/conda" ]]; then
-    CONDA_BIN="$HOME/anaconda3/bin/conda"
-  else
-    echo "Could not find a usable conda binary." >&2
-    exit 1
-  fi
-  eval "$("$CONDA_BIN" shell.bash hook)"
-  conda activate "$CONDA_ENV"
-fi
-
+CONDA_BIN="/playpen-shared/haochenz/miniconda3/bin/conda"
+eval "$("$CONDA_BIN" shell.bash hook)"
+conda activate vlm
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 export NCCL_DEBUG=INFO
 
 # =========================
-# 基本设置
+# Core dataset/runtime config (override via env vars in submit script)
 # =========================
-#DATASETS_DIR=/Users/zhc/Documents/PhD/projects/ImagenFew/data
-DATASETS_DIR="/playpen-shared/haochenz/ImagenFew/data"
-
-
-#REL_PATH=${REL_PATH:-TSF/ETT-small/ETTm1.csv}
-#DATA_BACKEND=${DATA_BACKEND:-ETTm1}
-#DATASET_NAME=${DATASET_NAME:-ETTm1}
-#IN_CHANNEL=${IN_CHANNEL-7}
-
-
-REL_PATH=${REL_PATH:-TSF/weather/weather.csv}
-DATA_BACKEND=${DATA_BACKEND:-Weather}
-DATASET_NAME=${DATASET_NAME:-custom}
-IN_CHANNEL=${IN_CHANNEL-6}
-ONE_CHANNEL=${ONE_CHANNEL:-${ON_CHANNEL:-0}}
-
-
+DATASETS_DIR=${DATASETS_DIR:-/mnt/unites8/playpen/haochenz/Time_Series_Datasets}
+DATA_BACKEND=${DATA_BACKEND:-ErcotData}
+DATASET_NAME=${DATASET_NAME:-ErcotData}
+REL_PATH=${REL_PATH:-ERCOT_merged.csv}
+REL_PATH_TRAIN=${REL_PATH_TRAIN:-}
+REL_PATH_VALID=${REL_PATH_VALID:-}
+IN_CHANNEL=${IN_CHANNEL:-8}
+ONE_CHANNEL=${ONE_CHANNEL:-0}
 
 # =========================
-# 训练参数
+# Training config
 # =========================
-BATCH_SIZE=512
-BS_POS=1024
-EPOCHS=1000
-IMG_SIZE=8
-TS_LEN=64
+BATCH_SIZE=${BATCH_SIZE:-512}
+BS_POS=${BS_POS:-1024}
+EPOCHS=${EPOCHS:-1000}
+TS_LEN=${TS_LEN:-64}
+IMG_SIZE=${IMG_SIZE:-8}
+STRIDE=${STRIDE:-1}
+DRIFT_LOSS_MODE=${DRIFT_LOSS_MODE:-time_series}
 
-
-#PROJECT_ROOT="/Users/zhc/Documents/PhD/projects/drifting-model"
 PROJECT_ROOT="/playpen-shared/haochenz/Drift"
+OUTPUT_DIR="${PROJECT_ROOT}/outputs/benchmark${TS_LEN}/${DATASET_NAME}"
+DATASET_LOWER=$(echo "${DATASET_NAME}" | tr '[:upper:]' '[:lower:]')
+VAE_ROOT=${VAE_ROOT:-/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_${DATASET_LOWER}_${TS_LEN}}
+VAE_CKPT_NAME=${VAE_CKPT_NAME:-best.pt}
 
-OUTPUT_DIR="${PROJECT_ROOT}/outputs/benchmark${TS_LEN}/${DATA_BACKEND}"
-VAE_ROOT="${PROJECT_ROOT}/fid_vae_ckpts/benchmark_${TS_LEN}"
-VAE_CKPT_NAME=${VAE_CKPT_NAME:-last.pt}
-
-ONE_CHANNEL_ARG=""
+declare -a EXTRA_ARGS=()
 if [[ "${ONE_CHANNEL}" == "1" ]]; then
-  ONE_CHANNEL_ARG="--one_channel"
+  EXTRA_ARGS+=(--one_channel)
   IN_CHANNEL=1
 fi
 
+if [[ -n "${REL_PATH}" ]]; then
+  EXTRA_ARGS+=(--rel_path "${REL_PATH}")
+fi
+if [[ -n "${REL_PATH_TRAIN}" ]]; then
+  EXTRA_ARGS+=(--rel_path_train "${REL_PATH_TRAIN}")
+fi
+if [[ -n "${REL_PATH_VALID}" ]]; then
+  EXTRA_ARGS+=(--rel_path_valid "${REL_PATH_VALID}")
+fi
 
-
-# =========================
-# 运行
-# =========================
 python benchmarking_drift.py \
-    --output_dir "${OUTPUT_DIR}" \
-    --seed 42 \
-    --num_workers 16 \
-    --batch_size "${BATCH_SIZE}" \
-    --epochs "${EPOCHS}" \
-    --eval_splits train \
-    \
-    --model DriftDiT-Tiny \
-    --img_size ${IMG_SIZE} \
-    --in_channels ${IN_CHANNEL} \
-    ${ONE_CHANNEL_ARG} \
-    \
-    --batch_n_pos ${BS_POS} \
-    --batch_n_neg ${BATCH_SIZE} \
-    --temperatures 0.02,0.05,0.2 \
-    \
-    --lr 1e-4 \
-    --weight_decay 1e-4 \
-    --grad_clip 1.0 \
-    \
-    --ema_decay 0.999 \
-    --warmup_steps 1000 \
-    \
-    --loss_domain time_series \
-    --queue_size 1280 \
-    \
-    --ts_seq_len ${TS_LEN} \
-    --ts_delay ${IMG_SIZE} \
-    --ts_embedding ${IMG_SIZE} \
-    --ts_stride 1 \
-    \
-    --dataset_name "${DATASET_NAME}" \
-    --data "${DATA_BACKEND}" \
-    --datasets_dir "${DATASETS_DIR}" \
-    --rel_path "${REL_PATH}" \
-    \
-    --eval_metrics vaeFID \
-    --eval_num_samples 2000 \
-    --eval_step_interval 500 \
-    \
-    --vae_ckpt_root "${VAE_ROOT}" \
-    --vae_ckpt_name "${VAE_CKPT_NAME}" \
-    \
-    --wandb \
-    --wandb_project BenchmarkingDrift \
-    --wandb_run_name "${DATASET_NAME}_${TS_LEN}_C${IN_CHANNEL}"
+  --output_dir "${OUTPUT_DIR}" \
+  --seed 42 \
+  --num_workers 16 \
+  --batch_size "${BATCH_SIZE}" \
+  --epochs "${EPOCHS}" \
+  --eval_splits train \
+  --model DriftDiT-Tiny \
+  --img_size "${IMG_SIZE}" \
+  --in_channels "${IN_CHANNEL}" \
+  --batch_n_pos "${BS_POS}" \
+  --batch_n_neg "${BATCH_SIZE}" \
+  --temperatures 0.02,0.05,0.2 \
+  --lr 1e-4 \
+  --weight_decay 1e-4 \
+  --grad_clip 1.0 \
+  --ema_decay 0.999 \
+  --warmup_steps 1000 \
+  --loss_domain time_series \
+  --drift_loss_mode "${DRIFT_LOSS_MODE}" \
+  --queue_size 1280 \
+  --ts_seq_len "${TS_LEN}" \
+  --ts_delay "${IMG_SIZE}" \
+  --ts_embedding "${IMG_SIZE}" \
+  --window_stride "${STRIDE}" \
+  --ts_stride "${STRIDE}" \
+  --stride "${STRIDE}" \
+  --dataset_name "${DATASET_NAME}" \
+  --data "${DATA_BACKEND}" \
+  --datasets_dir "${DATASETS_DIR}" \
+  --eval_metrics vaeFID \
+  --eval_num_samples 2000 \
+  --eval_step_interval 500 \
+  --vae_ckpt_root "${VAE_ROOT}" \
+  --vae_ckpt_name "${VAE_CKPT_NAME}" \
+  --wandb \
+  --wandb_project BenchmarkingDrift \
+  --wandb_run_name "${DATASET_NAME}_${TS_LEN}_S${STRIDE}_C${IN_CHANNEL}" \
+  "${EXTRA_ARGS[@]}"

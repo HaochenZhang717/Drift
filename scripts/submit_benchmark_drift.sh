@@ -1,104 +1,63 @@
-#CUDA_VISIBLE_DEVICES=4 \
-#REL_PATH=TSF/ETT-small/ETTm1.csv \
-#DATA_BACKEND=ETTm1 \
-#DATASET_NAME=ETTm1 \
-#IN_CHANNEL=7 \
-#ONE_CHANNEL=1 \
-#bash scripts/benchmark_drift.sh
+#!/usr/bin/env bash
+set -euo pipefail
 
+# Submit Drift benchmarks on GlucoseSliding / ErcotData / HouseholdData.
+# Edit TS_LENGTHS and (optionally) DRIFT_LOSS_MODE below as needed.
 
-CONDA_ENV=vlm \
-REL_PATH=TSF/ETT-small/ETTm1.csv \
-DATA_BACKEND=ETTm1 \
-DATASET_NAME=ETTm1 \
-IN_CHANNEL=7 \
-VAE_CKPT_NAME=last.pt \
-sbatch scripts/benchmark_drift.sh
+TS_LENGTHS=(64 128 256 512)
+DRIFT_LOSS_MODE=${DRIFT_LOSS_MODE:-time_series}
 
+for TSLEN in "${TS_LENGTHS[@]}"; do
+  IMG_SIZE=8
+  if [[ "${TSLEN}" == "128" ]]; then IMG_SIZE=12; fi
+  if [[ "${TSLEN}" == "256" ]]; then IMG_SIZE=16; fi
+  if [[ "${TSLEN}" == "512" ]]; then IMG_SIZE=24; fi
 
+  # GlucoseSliding (explicit train/valid parquet)
+  DATASETS_DIR=/playpen-shared/haochenz/AI-READI-Dataset/AI-READI-processed \
+  DATA_BACKEND=GlucoseSliding \
+  DATASET_NAME=GlucoseSliding \
+  REL_PATH= \
+  REL_PATH_TRAIN=glucose_train.parquet \
+  REL_PATH_VALID=glucose_valid.parquet \
+  STRIDE=128 \
+  TS_LEN="${TSLEN}" \
+  IMG_SIZE="${IMG_SIZE}" \
+  IN_CHANNEL=1 \
+  DRIFT_LOSS_MODE="${DRIFT_LOSS_MODE}" \
+  VAE_ROOT=/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_glucosesliding_${TSLEN} \
+  VAE_CKPT_NAME=best.pt \
+  sbatch scripts/benchmark_drift.sh
 
-CONDA_ENV=vlm \
-REL_PATH=TSF/ETT-small/ETTm2.csv \
-DATA_BACKEND=ETTm2 \
-DATASET_NAME=ETTm2 \
-IN_CHANNEL=7 \
-VAE_CKPT_NAME=last.pt \
-sbatch scripts/benchmark_drift.sh
+  # ERCOT
+  DATASETS_DIR=/mnt/unites8/playpen/haochenz/Time_Series_Datasets \
+  DATA_BACKEND=ErcotData \
+  DATASET_NAME=ErcotData \
+  REL_PATH=ERCOT_merged.csv \
+  REL_PATH_TRAIN= \
+  REL_PATH_VALID= \
+  STRIDE=1 \
+  TS_LEN="${TSLEN}" \
+  IMG_SIZE="${IMG_SIZE}" \
+  IN_CHANNEL=1 \
+  DRIFT_LOSS_MODE="${DRIFT_LOSS_MODE}" \
+  VAE_ROOT=/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_ercot_${TSLEN} \
+  VAE_CKPT_NAME=best.pt \
+  sbatch scripts/benchmark_drift.sh
 
-
-CONDA_ENV=vlm \
-REL_PATH=TSF/ETT-small/ETTh2.csv \
-DATA_BACKEND=ETTh2 \
-DATASET_NAME=ETTh2 \
-IN_CHANNEL=7 \
-VAE_CKPT_NAME=last.pt \
-sbatch scripts/benchmark_drift.sh
-
-
-CONDA_ENV=vlm \
-REL_PATH=TSF/weather/weather.csv \
-DATA_BACKEND=custom \
-DATASET_NAME=Weather \
-IN_CHANNEL=21 \
-VAE_CKPT_NAME=last.pt \
-sbatch scripts/benchmark_drift.sh
-
-
-CONDA_ENV=vlm \
-REL_PATH=TSG/AirQuality/AirQualityUCI.csv \
-DATA_BACKEND=AirQuality \
-DATASET_NAME=AirQuality \
-IN_CHANNEL=13 \
-VAE_CKPT_NAME=last.pt \
-sbatch scripts/benchmark_drift.sh
-
-
-CONDA_ENV=vlm \
-REL_PATH=TSF/ETT-small/ETTm1.csv \
-DATA_BACKEND=ETTm1 \
-DATASET_NAME=ETTm1 \
-IN_CHANNEL=7 \
-ONE_CHANNEL=1 \
-VAE_CKPT_NAME=last.pt \
-sbatch scripts/benchmark_drift.sh
-
-
-
-CONDA_ENV=vlm \
-REL_PATH=TSF/ETT-small/ETTm2.csv \
-DATA_BACKEND=ETTm2 \
-DATASET_NAME=ETTm2 \
-IN_CHANNEL=7 \
-ONE_CHANNEL=1 \
-VAE_CKPT_NAME=last.pt \
-sbatch scripts/benchmark_drift.sh
-
-
-CONDA_ENV=vlm \
-REL_PATH=TSF/ETT-small/ETTh2.csv \
-DATA_BACKEND=ETTh2 \
-DATASET_NAME=ETTh2 \
-IN_CHANNEL=7 \
-ONE_CHANNEL=1 \
-VAE_CKPT_NAME=last.pt \
-sbatch scripts/benchmark_drift.sh
-
-
-CONDA_ENV=vlm \
-REL_PATH=TSF/weather/weather.csv \
-DATA_BACKEND=custom \
-DATASET_NAME=Weather \
-IN_CHANNEL=21 \
-ONE_CHANNEL=1 \
-VAE_CKPT_NAME=last.pt \
-sbatch scripts/benchmark_drift.sh
-
-
-CONDA_ENV=vlm \
-REL_PATH=TSG/AirQuality/AirQualityUCI.csv \
-DATA_BACKEND=AirQuality \
-DATASET_NAME=AirQuality \
-IN_CHANNEL=13 \
-ONE_CHANNEL=1 \
-VAE_CKPT_NAME=last.pt \
-sbatch scripts/benchmark_drift.sh
+  # Household
+  DATASETS_DIR=/mnt/unites8/playpen/haochenz/Time_Series_Datasets \
+  DATA_BACKEND=HouseholdData \
+  DATASET_NAME=HouseholdData \
+  REL_PATH=HouseHold_6.csv \
+  REL_PATH_TRAIN= \
+  REL_PATH_VALID= \
+  STRIDE=10 \
+  TS_LEN="${TSLEN}" \
+  IMG_SIZE="${IMG_SIZE}" \
+  IN_CHANNEL=6 \
+  DRIFT_LOSS_MODE="${DRIFT_LOSS_MODE}" \
+  VAE_ROOT=/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_household_${TSLEN} \
+  VAE_CKPT_NAME=best.pt \
+  sbatch scripts/benchmark_drift.sh
+done
