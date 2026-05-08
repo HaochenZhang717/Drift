@@ -33,7 +33,7 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
     --latent_downsample 16 \
     --decoder_upsample_rate 4 \
     --dropout 0.1 \
-    --commitment_weight 0.01 \
+    --commitment_weight 0.25 \
     \
     --save_dir /mnt/unites8/playpen/haochenz/Drift/vqvae_ckpts/benchmark_ercot_${TSLEN} \
     --device "cuda" \

@@ -192,6 +192,11 @@ def validate_decoder_shape_args(seq_len, latent_downsample, decoder_upsample_rat
         )
 
 
+def _used_codes_count(indices: torch.Tensor) -> int:
+    # indices: (B, T_latent)
+    return int(torch.unique(indices).numel())
+
+
 def train_one_epoch(model, dataloader, optimizer, device):
     model.train()
     total_loss = 0.0
@@ -200,6 +205,8 @@ def train_one_epoch(model, dataloader, optimizer, device):
     total_codebook = 0.0
     total_commitment = 0.0
     total_perplexity = 0.0
+    num_codes = int(model.quantizer.num_codes)
+    epoch_used_mask = torch.zeros(num_codes, dtype=torch.bool)
     pbar = tqdm(dataloader, desc="Train", file=sys.stdout)
 
     for batch in pbar:
@@ -219,6 +226,8 @@ def train_one_epoch(model, dataloader, optimizer, device):
         total_codebook += out["codebook_loss"].item()
         total_commitment += out["commitment_loss"].item()
         total_perplexity += out["perplexity"].item()
+        batch_unique = torch.unique(out["indices"].detach().cpu())
+        epoch_used_mask[batch_unique] = True
 
         pbar.set_postfix(
             {
@@ -226,6 +235,7 @@ def train_one_epoch(model, dataloader, optimizer, device):
                 "recon": f"{loss_dict['recon_loss'].item():.4f}",
                 "vq": f"{loss_dict['vq_loss'].item():.4f}",
                 "ppx": f"{out['perplexity'].item():.2f}",
+                "used": f"{_used_codes_count(out['indices'])}",
             }
         )
 
@@ -237,6 +247,7 @@ def train_one_epoch(model, dataloader, optimizer, device):
         total_codebook / n,
         total_commitment / n,
         total_perplexity / n,
+        float(epoch_used_mask.sum().item()),
     )
 
 
@@ -249,6 +260,8 @@ def validate(model, dataloader, device):
     total_codebook = 0.0
     total_commitment = 0.0
     total_perplexity = 0.0
+    num_codes = int(model.quantizer.num_codes)
+    epoch_used_mask = torch.zeros(num_codes, dtype=torch.bool)
 
     for batch in dataloader:
         x = batch[0].to(device)
@@ -260,6 +273,8 @@ def validate(model, dataloader, device):
         total_codebook += out["codebook_loss"].item()
         total_commitment += out["commitment_loss"].item()
         total_perplexity += out["perplexity"].item()
+        batch_unique = torch.unique(out["indices"].detach().cpu())
+        epoch_used_mask[batch_unique] = True
 
     n = len(dataloader)
     return (
@@ -269,6 +284,7 @@ def validate(model, dataloader, device):
         total_codebook / n,
         total_commitment / n,
         total_perplexity / n,
+        float(epoch_used_mask.sum().item()),
     )
 
 
@@ -351,6 +367,7 @@ def train(args):
             train_codebook,
             train_commitment,
             train_ppx,
+            train_used_codes,
         ) = train_one_epoch(model, train_loader, optimizer, device)
         (
             val_loss,
@@ -359,18 +376,23 @@ def train(args):
             val_codebook,
             val_commitment,
             val_ppx,
+            val_used_codes,
         ) = validate(model, val_loader, device)
+        train_used_ratio = train_used_codes / float(args.num_codes)
+        val_used_ratio = val_used_codes / float(args.num_codes)
 
         print(
             f"\nTrain Loss: {train_loss:.6f} | Recon: {train_recon:.6f} | "
             f"VQ: {train_vq:.6f} | Codebook: {train_codebook:.6f} | "
-            f"Commit: {train_commitment:.6f} | PPL: {train_ppx:.3f}",
+            f"Commit: {train_commitment:.6f} | PPL: {train_ppx:.3f} | "
+            f"Used: {train_used_codes:.2f}/{args.num_codes} ({train_used_ratio:.3f})",
             flush=True,
         )
         print(
             f"Val   Loss: {val_loss:.6f} | Recon: {val_recon:.6f} | "
             f"VQ: {val_vq:.6f} | Codebook: {val_codebook:.6f} | "
-            f"Commit: {val_commitment:.6f} | PPL: {val_ppx:.3f}",
+            f"Commit: {val_commitment:.6f} | PPL: {val_ppx:.3f} | "
+            f"Used: {val_used_codes:.2f}/{args.num_codes} ({val_used_ratio:.3f})",
             flush=True,
         )
 
@@ -383,12 +405,16 @@ def train(args):
                     "train/codebook_loss": train_codebook,
                     "train/commitment_loss": train_commitment,
                     "train/perplexity": train_ppx,
+                    "train/used_codes": train_used_codes,
+                    "train/used_code_ratio": train_used_ratio,
                     "val/loss": val_loss,
                     "val/recon_loss": val_recon,
                     "val/vq_loss": val_vq,
                     "val/codebook_loss": val_codebook,
                     "val/commitment_loss": val_commitment,
                     "val/perplexity": val_ppx,
+                    "val/used_codes": val_used_codes,
+                    "val/used_code_ratio": val_used_ratio,
                     "val/best_loss": min(best_val_loss, val_loss),
                     "epoch": epoch + 1,
                     "lr": optimizer.param_groups[0]["lr"],
