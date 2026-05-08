@@ -1,0 +1,33 @@
+# training:
+epochs: 1001
+batch_size: 256
+learning_rate: 0.0001
+weight_decay: 0.00001
+# transform:
+use_stft: false
+delay: 16
+embedding: 16
+# model:
+handler: models.ImagenTime.handler
+img_resolution: 16
+unet_channels: 32
+ch_mult: [1,2,2,4]
+attn_resolution: [8,4,2]
+diffusion_steps: 36
+ema: true
+ema_warmup: 100
+# logging:
+logging_iter: 100
+tags: []
+run_dir: ImagenTime/HouseholdData_len256/
+# Data
+datasets_dir: /mnt/unites8/playpen/haochenz/Time_Series_Datasets
+seq_len: 256
+pretrain: false
+datasets:
+  - name: HouseholdData
+    data: HouseholdData
+    rel_path: HouseHold_6.csv
+    stride: 10
+train_on_datasets:
+  - HouseholdData

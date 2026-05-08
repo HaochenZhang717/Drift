@@ -92,7 +92,7 @@ def create_model_name_and_dir(args):
     name = get_model_name(args)
     args.ts2vec_dir = os.path.join(args.log_dir ,"TS2VEC")
     os.makedirs(args.ts2vec_dir , exist_ok=True)
-    args.log_dir = os.path.join(args.log_dir, args.run_dir, args.run_id, name)
+    args.log_dir = os.path.join(args.log_dir, args.run_dir, name)
     os.makedirs(os.path.dirname(args.log_dir), exist_ok=True)
 
 def get_model_name(args):
