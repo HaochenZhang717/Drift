@@ -85,8 +85,6 @@ def build_config(args: argparse.Namespace) -> Dict[str, Any]:
         "ema_decay",
         "warmup_steps",
         "epochs",
-        "use_feature_encoder",
-        "loss_domain",
         "queue_size",
         "ts_seq_len",
         "ts_delay",
@@ -261,11 +259,7 @@ def train_step(
     n_pos = config["batch_n_pos"]
     n_neg = config["batch_n_neg"]
     temperatures = config["temperatures"]
-    ts_loss_config = (
-        config
-        if config.get("loss_domain") == "time_series"
-        else None
-    )
+    ts_loss_config = config
 
     # Total batch size
     batch_size = n_neg
@@ -448,7 +442,6 @@ def train(
     metrics_base_path: Optional[str] = None,
     vae_ckpt_root: Optional[str] = None,
     vae_ckpt_name: str = "best.pt",
-    fid_monitor_split: str = "train",
     batch_size: int = 256,
     argparse_config: Optional[Dict[str, Any]] = None,
     eval_splits: Optional[list] = None,
@@ -471,8 +464,6 @@ def train(
     # config["dataset"] = config["data"]
 
     eval_splits = eval_splits or ["train", "test"]
-    if config.get("drift_loss_mode") in {"vqvae", "both"}:
-        config["use_feature_encoder"] = True
     wandb_config = dict(argparse_config) if argparse_config is not None else dict(config)
     wandb_config["resolved_training_config"] = dict(config)
 
@@ -618,7 +609,6 @@ def train(
             commitment_weight=config["vqvae_commitment_weight"],
         )
         feature_encoders.append(vq_feature_encoder)
-        config["use_feature_encoder"] = True
         print("Using pretrained VQVAE feature encoder for drifting loss.")
 
     if not feature_encoders:
@@ -795,7 +785,7 @@ def train(
                     if wandb_run is not None:
                         wandb.log(metric_results, step=global_step)
 
-                    monitored_fid_key = f"metric/{fid_monitor_split}/vae_fid"
+                    monitored_fid_key = "metric/test/vae_fid"
                     if monitored_fid_key in metric_results:
                         current_fid = float(metric_results[monitored_fid_key])
                         if current_fid < best_monitored_fid:
@@ -811,13 +801,10 @@ def train(
                                 global_step,
                                 config,
                             )
-                            print(
-                                f"Saved best-FID checkpoint ({fid_monitor_split}) "
-                                f"{current_fid:.6f} -> {best_fid_ckpt_path}"
-                            )
+                            print(f"Saved best-FID checkpoint (test) {current_fid:.6f} -> {best_fid_ckpt_path}")
                             if wandb_run is not None:
                                 wandb.log(
-                                    {f"metric/{fid_monitor_split}/best_vae_fid": best_monitored_fid},
+                                    {"metric/test/best_vae_fid": best_monitored_fid},
                                     step=global_step,
                                 )
                 except Exception as exc:
@@ -1118,13 +1105,6 @@ def main():
         help="FID-VAE checkpoint filename to use for vaeFID (e.g., best.pt or last.pt).",
     )
     parser.add_argument(
-        "--fid_monitor_split",
-        type=str,
-        default="train",
-        choices=["train", "test"],
-        help="Split used to monitor best vaeFID and save checkpoint_best_fid.pt.",
-    )
-    parser.add_argument(
         "--batch_size",
         type=int,
         default=256,
@@ -1144,8 +1124,6 @@ def main():
     parser.add_argument("--ema_decay", type=float, default=0.999)
     parser.add_argument("--warmup_steps", type=int, default=1000)
     parser.add_argument("--epochs", type=int, default=100)
-    parser.add_argument("--use_feature_encoder", action="store_true")
-    parser.add_argument("--loss_domain", type=str, default="time_series", choices=["time_series"])
     parser.add_argument(
         "--drift_loss_mode",
         type=str,
@@ -1209,7 +1187,6 @@ def main():
         metrics_base_path=args.metrics_base_path,
         vae_ckpt_root=args.vae_ckpt_root,
         vae_ckpt_name=args.vae_ckpt_name,
-        fid_monitor_split=args.fid_monitor_split,
         batch_size=args.batch_size,
         argparse_config=vars(args),
         eval_splits=args.eval_splits,

@@ -47,7 +47,7 @@ STRIDE=${STRIDE:-1}
 DRIFT_LOSS_MODE=${DRIFT_LOSS_MODE:-time_series}
 
 PROJECT_ROOT="/playpen-shared/haochenz/Drift"
-OUTPUT_DIR="${PROJECT_ROOT}/outputs/benchmark${TS_LEN}/${DATASET_NAME}"
+OUTPUT_DIR="/mnt/unites8/playpen/haochenz/Drift/drift_outputs/benchmark${TS_LEN}/${DATASET_NAME}"
 DATASET_LOWER=$(echo "${DATASET_NAME}" | tr '[:upper:]' '[:lower:]')
 VAE_ROOT=${VAE_ROOT:-/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_${DATASET_LOWER}_${TS_LEN}}
 VAE_CKPT_NAME=${VAE_CKPT_NAME:-best.pt}
