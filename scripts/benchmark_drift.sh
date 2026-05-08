@@ -74,7 +74,7 @@ python benchmarking_drift.py \
   --num_workers 16 \
   --batch_size "${BATCH_SIZE}" \
   --epochs "${EPOCHS}" \
-  --eval_splits train \
+  --eval_splits test \
   --model DriftDiT-Tiny \
   --img_size "${IMG_SIZE}" \
   --in_channels "${IN_CHANNEL}" \
