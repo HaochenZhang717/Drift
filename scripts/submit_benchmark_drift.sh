@@ -7,6 +7,7 @@ set -euo pipefail
 TS_LENGTHS=(64 128 256 512)
 DRIFT_LOSS_MODE=${DRIFT_LOSS_MODE:-time_series}
 
+
 for TSLEN in "${TS_LENGTHS[@]}"; do
   IMG_SIZE=8
   if [[ "${TSLEN}" == "128" ]]; then IMG_SIZE=12; fi

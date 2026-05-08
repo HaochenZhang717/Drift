@@ -1015,7 +1015,7 @@ def main():
     parser.add_argument(
         "--save_interval",
         type=int,
-        default=10,
+        default=100,
         help="Checkpoint save interval (epochs)",
     )
     parser.add_argument(
