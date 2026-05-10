@@ -11,7 +11,8 @@ export CUDA_VISIBLE_DEVICES=0
 
 EXP_NAME=multimodal_jit_v1
 
-OUTPUT_DIR=./outputs/${EXP_NAME}
+#OUTPUT_DIR=./outputs/${EXP_NAME}
+OUTPUT_DIR=/mnt/unites8/playpen/haochenz/Drift/outputs/${EXP_NAME}
 LOG_DIR=./logs
 
 mkdir -p ${OUTPUT_DIR}
@@ -23,6 +24,8 @@ mkdir -p ${LOG_DIR}
 DATA_ROOT="/playpen-shared/haochenz/AI-READI-Dataset/AI-READI-processed"
 PARTICIPANTS_TSV_PATH="/playpen-shared/mshuang/morris/morris/d9ef6cf1-f6c3-4956-a91e-adf409e105f0/dataset/participants.tsv"
 
+#DATA_ROOT="/Users/zhc/Downloads/AI-READI-processed"
+#PARTICIPANTS_TSV_PATH="/Users/zhc/Downloads/AI-READI/participants.tsv"
 
 
 # --------------------------------------------------------
@@ -113,9 +116,6 @@ python train_multimodal_jit.py \
     --max_window_span_hours 24 \
     --anchor_sampling_minutes 5.0 \
     --anchor_sampling_tolerance_seconds 2 \
-    \
-    --log_interval 10 \
-    --save_interval 100 \
     \
     --wandb \
     --wandb_project multimodal_cgm \

@@ -26,7 +26,7 @@ def set_seed(seed: int) -> None:
 
 
 def build_dataset(args: argparse.Namespace, split: str) -> AIREADIModalityImputationDataset:
-    modalities = ["glucose"]
+    modalities = ["glucose", "heart_rate", "calorie", "physical_activity", "respiratory_rate"]
     max_events = {m: args.ts_seq_len for m in modalities}
     min_events = {"glucose": args.daily_min_events}
 
@@ -111,6 +111,9 @@ def build_model_args(args: argparse.Namespace) -> SimpleNamespace:
 
 
 def train(args: argparse.Namespace) -> None:
+    if not (0.0 <= args.max_missing_ratio <= 1.0):
+        raise ValueError("--max_missing_ratio must be in [0, 1]")
+
     set_seed(args.seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     print(f"Using device: {device}")
@@ -118,6 +121,7 @@ def train(args: argparse.Namespace) -> None:
     train_dataset = build_dataset(args, args.train_split)
     val_dataset = build_dataset(args, args.val_split)
     print(f"Raw windows | train: {len(train_dataset)} | val: {len(val_dataset)}")
+    print(f"Missing-token threshold argument: {args.max_missing_ratio:.2f}")
 
     train_loader = DataLoader(
         train_dataset,
@@ -336,6 +340,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--ts_embedding", type=int, default=32)
     parser.add_argument("--window_mode", type=str, default="daily", choices=["daily", "sliding"])
     parser.add_argument("--daily_min_events", type=int, default=288)
+    parser.add_argument("--max_missing_ratio", type=float, default=0.8)
     parser.add_argument("--max_anchor_gap_minutes", type=float, default=30.0)
     parser.add_argument("--max_window_span_hours", type=float, default=24.0)
     parser.add_argument("--anchor_sampling_minutes", type=float, default=5.0)

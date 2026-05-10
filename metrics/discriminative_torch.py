@@ -85,7 +85,7 @@ def discriminative_score_metrics(ori_data, generated_data, device):
     ## Builde a post-hoc RNN discriminator network
     # Network parameters
     input_channels = ori_data.size(-1)
-    hidden_dim = max(32, int(input_channels / 2))
+    hidden_dim = max(4, int(input_channels / 2))
     iterations = 2000
     batch_size = 32
 
