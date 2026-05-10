@@ -29,7 +29,10 @@ python train_mm_jepa_jit.py \
     --modality_channel_splits "1,1,1,1,1,1" \
     \
     --ts_seq_len ${TS_LEN} \
-    --ts_delay 10 \
+    --window_stride 10 \
+    --ts_stride 10 \
+    --stride 10 \
+    --ts_delay ${IMG_SIZE} \
     --ts_embedding ${IMG_SIZE} \
     \
     --jepa_hidden_size 32 \

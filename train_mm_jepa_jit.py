@@ -50,6 +50,15 @@ def load_dataset_configs(args: argparse.Namespace) -> List[Dict[str, Any]]:
         config["rel_path"] = args.rel_path or args.rel_path_train
     if args.input_channels is not None:
         config["input_channels"] = args.input_channels
+    effective_stride = args.window_stride
+    if effective_stride is None:
+        effective_stride = args.ts_stride
+    if effective_stride is None:
+        effective_stride = args.stride
+    if effective_stride is not None:
+        config["window_stride"] = int(effective_stride)
+        config["ts_stride"] = int(effective_stride)
+        config["stride"] = int(effective_stride)
     if args.rel_path_train is not None:
         config["rel_path_train"] = args.rel_path_train
     if args.rel_path_valid is not None:
@@ -589,6 +598,9 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--no_normalize", action="store_true")
 
     parser.add_argument("--ts_seq_len", type=int, default=128)
+    parser.add_argument("--window_stride", type=int, default=None)
+    parser.add_argument("--ts_stride", type=int, default=None)
+    parser.add_argument("--stride", type=int, default=None)
     parser.add_argument("--ts_delay", type=int, default=12)
     parser.add_argument("--ts_embedding", type=int, default=12)
 
