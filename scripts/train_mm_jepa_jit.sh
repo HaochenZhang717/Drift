@@ -23,7 +23,6 @@ python train_mm_jepa_jit.py \
     --weight_decay 1e-3 \
     --grad_clip 1.0 \
     --save_interval 10 \
-    --val_max_batches 50 \
     \
     --input_channels 6 \
     --num_modalities 6 \
@@ -67,8 +66,7 @@ python train_mm_jepa_jit.py \
     --interval_min 0.0 \
     --interval_max 1.0 \
     \
-    --imputation_eval_interval 5 \
-    --imputation_eval_max_batches 4 \
+    --imputation_eval_interval 100 \
     \
     --wandb_project "mm-jepa-jit" \
     --wandb_run_name "debug" \
