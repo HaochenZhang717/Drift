@@ -2,7 +2,7 @@
 
 set -euo pipefail
 
-export CUDA_VISIBLE_DEVICES=0
+export CUDA_VISIBLE_DEVICES=2
 
 
 EXP_NAME="cls_cond_jit_run1"
