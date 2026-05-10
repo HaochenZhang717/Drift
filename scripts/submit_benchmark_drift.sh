@@ -5,7 +5,7 @@ set -euo pipefail
 # Edit TS_LENGTHS and (optionally) DRIFT_LOSS_MODE below as needed.
 
 TS_LENGTHS=(64 128 256 512)
-DRIFT_LOSS_MODE=${DRIFT_LOSS_MODE:-time_series}
+DRIFT_LOSS_MODE=${DRIFT_LOSS_MODE:-vqvae}
 
 
 for TSLEN in "${TS_LENGTHS[@]}"; do
@@ -28,6 +28,15 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
   DRIFT_LOSS_MODE="${DRIFT_LOSS_MODE}" \
   VAE_ROOT=/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_glucosesliding_${TSLEN} \
   VAE_CKPT_NAME=best.pt \
+  VQVAE_CKPT_PATH=/mnt/unites8/playpen/haochenz/Drift/vqvae_ckpts/benchmark_glucosesliding_${TSLEN}/GlucoseSliding/best.pt \
+  VQVAE_HIDDEN_SIZE=32 \
+  VQVAE_NUM_LAYERS=1 \
+  VQVAE_CODE_DIM=8 \
+  VQVAE_NUM_CODES=150 \
+  VQVAE_LATENT_DOWNSAMPLE=16 \
+  VQVAE_DECODER_UPSAMPLE_RATE=4 \
+  VQVAE_DROPOUT=0.1 \
+  VQVAE_COMMITMENT_WEIGHT=0.25 \
   sbatch scripts/benchmark_drift.sh
 
   # ERCOT
@@ -44,6 +53,15 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
   DRIFT_LOSS_MODE="${DRIFT_LOSS_MODE}" \
   VAE_ROOT=/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_ercot_${TSLEN} \
   VAE_CKPT_NAME=best.pt \
+  VQVAE_CKPT_PATH=/mnt/unites8/playpen/haochenz/Drift/vqvae_ckpts/benchmark_ercot_${TSLEN}/ErcotData/best.pt \
+  VQVAE_HIDDEN_SIZE=32 \
+  VQVAE_NUM_LAYERS=1 \
+  VQVAE_CODE_DIM=4 \
+  VQVAE_NUM_CODES=150 \
+  VQVAE_LATENT_DOWNSAMPLE=16 \
+  VQVAE_DECODER_UPSAMPLE_RATE=4 \
+  VQVAE_DROPOUT=0.1 \
+  VQVAE_COMMITMENT_WEIGHT=0.25 \
   sbatch scripts/benchmark_drift.sh
 
   # Household
@@ -60,6 +78,15 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
   DRIFT_LOSS_MODE="${DRIFT_LOSS_MODE}" \
   VAE_ROOT=/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_household_${TSLEN} \
   VAE_CKPT_NAME=best.pt \
+  VQVAE_CKPT_PATH=/mnt/unites8/playpen/haochenz/Drift/vqvae_ckpts/benchmark_household_${TSLEN}/HouseholdData/best.pt \
+  VQVAE_HIDDEN_SIZE=32 \
+  VQVAE_NUM_LAYERS=1 \
+  VQVAE_CODE_DIM=8 \
+  VQVAE_NUM_CODES=150 \
+  VQVAE_LATENT_DOWNSAMPLE=16 \
+  VQVAE_DECODER_UPSAMPLE_RATE=4 \
+  VQVAE_DROPOUT=0.1 \
+  VQVAE_COMMITMENT_WEIGHT=0.25 \
   sbatch scripts/benchmark_drift.sh
 done
 
@@ -128,4 +155,3 @@ done
 #  VAE_CKPT_NAME=best.pt \
 #  bash scripts/benchmark_drift.sh
 #done
-

@@ -52,6 +52,25 @@ DATASET_LOWER=$(echo "${DATASET_NAME}" | tr '[:upper:]' '[:lower:]')
 VAE_ROOT=${VAE_ROOT:-/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_${DATASET_LOWER}_${TS_LEN}}
 VAE_CKPT_NAME=${VAE_CKPT_NAME:-best.pt}
 
+case "${DATASET_NAME}" in
+  ErcotData) DEFAULT_VQVAE_DATASET_SLUG=ercot ;;
+  HouseholdData) DEFAULT_VQVAE_DATASET_SLUG=household ;;
+  GlucoseSliding) DEFAULT_VQVAE_DATASET_SLUG=glucosesliding ;;
+  *) DEFAULT_VQVAE_DATASET_SLUG="${DATASET_LOWER}" ;;
+esac
+VQVAE_DATASET_SLUG=${VQVAE_DATASET_SLUG:-${DEFAULT_VQVAE_DATASET_SLUG}}
+VQVAE_ROOT=${VQVAE_ROOT:-/mnt/unites8/playpen/haochenz/Drift/vqvae_ckpts/benchmark_${VQVAE_DATASET_SLUG}_${TS_LEN}/${DATASET_NAME}}
+VQVAE_CKPT_NAME=${VQVAE_CKPT_NAME:-best.pt}
+VQVAE_CKPT_PATH=${VQVAE_CKPT_PATH:-${VQVAE_ROOT}/${VQVAE_CKPT_NAME}}
+VQVAE_HIDDEN_SIZE=${VQVAE_HIDDEN_SIZE:-32}
+VQVAE_NUM_LAYERS=${VQVAE_NUM_LAYERS:-1}
+VQVAE_CODE_DIM=${VQVAE_CODE_DIM:-8}
+VQVAE_NUM_CODES=${VQVAE_NUM_CODES:-150}
+VQVAE_LATENT_DOWNSAMPLE=${VQVAE_LATENT_DOWNSAMPLE:-16}
+VQVAE_DECODER_UPSAMPLE_RATE=${VQVAE_DECODER_UPSAMPLE_RATE:-4}
+VQVAE_DROPOUT=${VQVAE_DROPOUT:-0.1}
+VQVAE_COMMITMENT_WEIGHT=${VQVAE_COMMITMENT_WEIGHT:-0.25}
+
 declare -a EXTRA_ARGS=()
 if [[ "${ONE_CHANNEL}" == "1" ]]; then
   EXTRA_ARGS+=(--one_channel)
@@ -88,6 +107,15 @@ python benchmarking_drift.py \
   --warmup_steps 1000 \
   --drift_loss_mode "${DRIFT_LOSS_MODE}" \
   --queue_size 1280 \
+  --vqvae_ckpt_path "${VQVAE_CKPT_PATH}" \
+  --vqvae_hidden_size "${VQVAE_HIDDEN_SIZE}" \
+  --vqvae_num_layers "${VQVAE_NUM_LAYERS}" \
+  --vqvae_code_dim "${VQVAE_CODE_DIM}" \
+  --vqvae_num_codes "${VQVAE_NUM_CODES}" \
+  --vqvae_latent_downsample "${VQVAE_LATENT_DOWNSAMPLE}" \
+  --vqvae_decoder_upsample_rate "${VQVAE_DECODER_UPSAMPLE_RATE}" \
+  --vqvae_dropout "${VQVAE_DROPOUT}" \
+  --vqvae_commitment_weight "${VQVAE_COMMITMENT_WEIGHT}" \
   --ts_seq_len "${TS_LEN}" \
   --ts_delay "${IMG_SIZE}" \
   --ts_embedding "${IMG_SIZE}" \
