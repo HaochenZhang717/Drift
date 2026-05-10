@@ -12,7 +12,7 @@ python train_mm_jepa_jit.py \
     --datasets_dir ${DATA_DIR} \
     --rel_path "HouseHold_6.csv" \
     \
-    --output_dir "./debug_outputs/mm_jepa_jit_exp1" \
+    --output_dir "/mnt/unites8/playpen/haochenz/Drift/debug_outputs/mm_jepa_jit_exp1" \
     --epochs 100 \
     --batch_size 32 \
     --num_workers 1 \
