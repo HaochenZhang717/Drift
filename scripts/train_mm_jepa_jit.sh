@@ -3,10 +3,13 @@
 export CUDA_VISIBLE_DEVICES=0
 IMG_SIZE=12
 TS_LEN=128
+DATA_DIR="/mnt/unites8/playpen/haochenz/Time_Series_Datasets"
+#DATA_DIR="/Users/zhc/Documents/Time_Series_Datasets"
+
 python train_mm_jepa_jit.py \
     --dataset_name "HouseholdData" \
     --data "HouseholdData" \
-    --datasets_dir "/Users/zhc/Documents/Time_Series_Datasets" \
+    --datasets_dir ${DATA_DIR} \
     --rel_path "HouseHold_6.csv" \
     \
     --output_dir "./debug_outputs/mm_jepa_jit_exp1" \
@@ -41,12 +44,12 @@ python train_mm_jepa_jit.py \
     --jepa_predictor_mlp_ratio 4.0 \
     --jepa_predictor_dropout 0.0 \
     --jepa_ema_momentum 0.996 \
-    --jepa_max_len 128 \
+    --jepa_max_len ${TS_LEN} \
     \
     --img_size ${IMG_SIZE} \
     --patch_size 2 \
-    --hidden_channels 256 \
-    --depth 6 \
+    --hidden_channels 128 \
+    --depth 3 \
     --num_heads 4 \
     --attn_dropout 0.0 \
     --proj_dropout 0.0 \
