@@ -10,9 +10,9 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data import DataLoader
 
-from img_transformations import DelayEmbedder
 from models.cond_jit.denoiser import Denoiser
 from models.evaluation_models.classifier import Simple1DCNNClassifier
+from ts_quality_eval import delay_images_to_series
 from utils.utils_dataset import AI_READI_STUDY_GROUPS, AIREADIModalityImputationDataset
 
 
@@ -194,7 +194,7 @@ def generate_series_per_class(
     n_per_class: int,
     device: torch.device,
     gen_batch_size: int,
-    delay_embedder: DelayEmbedder,
+    ts_config: Dict[str, Any],
 ) -> Tuple[torch.Tensor, torch.Tensor]:
     xs = []
     ys = []
@@ -205,7 +205,7 @@ def generate_series_per_class(
             cur = min(gen_batch_size, n_per_class - n_done)
             labels = torch.full((cur,), c, dtype=torch.long, device=device)
             imgs = model.generate(labels)
-            series = delay_embedder.img_to_ts(imgs)
+            series = delay_images_to_series(imgs, config=ts_config, device=device)
             xs.append(series)
             ys.append(labels)
             n_done += cur
@@ -321,7 +321,6 @@ def main(args: argparse.Namespace) -> None:
     dataset = build_dataset(args)
     model = build_cls_cond_jit_from_ckpt(args, device)
     clf = build_classifier_from_ckpt(args, device)
-    delay_embedder = DelayEmbedder(device=device, seq_len=args.ts_seq_len, delay=args.ts_delay, embedding=args.ts_embedding)
 
     repeat_summaries: List[Dict[str, Any]] = []
     for repeat_idx in range(args.num_repeats):
@@ -346,7 +345,11 @@ def main(args: argparse.Namespace) -> None:
             n_per_class=k_real,
             device=device,
             gen_batch_size=args.gen_batch_size,
-            delay_embedder=delay_embedder,
+            ts_config={
+                "ts_seq_len": args.ts_seq_len,
+                "ts_delay": args.ts_delay,
+                "ts_embedding": args.ts_embedding,
+            },
         )
         print(f"Generated samples: total={y_gen.numel()} | per_class={k_real}")
 
