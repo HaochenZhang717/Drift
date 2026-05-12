@@ -1,42 +1,34 @@
 seed: 1234
-
 load_ver: '0'
 load_v_num:
-
 output_dir: ./output
 devices: [0]
-
 resume: False
-
 var_path:
   load_dir:
   load_ver: '1'
   load_v_num:
-
-lr: 1.0e-4
+lr: 1.0e-04
 lr_scheduler: step
 lr_decay_steps: 90
 lr_decay_rate: 0.5
-
 genaerated_data: False
-
 dataloader:
-  target: Utils.npy_datasets.PreSplitNPYDataset
+  target: Utils.data_provider_datasets.DataProviderWindowDataset
   params:
-    name: synth_u
-    data_root: ../data/synthetic_u
-    window: 128
+    name: HouseholdData
+    data: HouseholdData
+    datasets_dir: /Users/zhc/Documents/Time_Series_Datasets
+    rel_path: HouseHold_6.csv
+    stride: 10
+    window: 512
     save2npy: True
-    neg_one_to_one: True
-    seed: 123
-
-batch_size: 256
+batch_size: 512
 max_epochs: 900
-
 vqvae_args:
   vocab_size: 512
-  z_channels: 256
-  ch: 256
+  z_channels: 128
+  ch: 128
   dropout: 0.0
   beta: 0.25
   using_znorm: True
@@ -44,16 +36,15 @@ vqvae_args:
   quant_resi: 0.5
   share_quant_resi: 0
   default_qresi_counts: 0
-  v_patch_nums: [1, 2, 4, 8, 16, 32]
-  in_channels: 1
+  v_patch_nums: [1, 2, 4, 8, 16, 32, 64, 128]
+  in_channels: 6
   test_mode: True
   ch_mult: [1, 1, 2]
-
 var_args:
   embed_dim: 512
-  block_size: 63      # sum([1,2,4,8,16]) = 31
+  block_size: 255
   num_layers: 1
   n_head: 8
   drop_out_rate: 0.0
   fc_rate: 4
-  patch_nums: [1, 2, 4, 8, 16, 32]
+  patch_nums: [1, 2, 4, 8, 16, 32, 64, 128]

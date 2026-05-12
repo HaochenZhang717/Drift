@@ -18,10 +18,10 @@ dataloader:
   params:
     name: HouseholdData
     data: HouseholdData
-    datasets_dir: /mnt/unites8/playpen/haochenz/Time_Series_Datasets
+    datasets_dir: /Users/zhc/Documents/Time_Series_Datasets
     rel_path: HouseHold_6.csv
     stride: 10
-    window: 512
+    window: 128
     save2npy: True
 batch_size: 512
 max_epochs: 900
@@ -36,15 +36,15 @@ vqvae_args:
   quant_resi: 0.5
   share_quant_resi: 0
   default_qresi_counts: 0
-  v_patch_nums: [1, 2, 4, 8, 16, 32, 64, 128]
+  v_patch_nums: [1, 2, 4, 8, 16, 32]
   in_channels: 6
   test_mode: True
   ch_mult: [1, 1, 2]
 var_args:
   embed_dim: 512
-  block_size: 255
+  block_size: 63
   num_layers: 1
   n_head: 8
   drop_out_rate: 0.0
   fc_rate: 4
-  patch_nums: [1, 2, 4, 8, 16, 32, 64, 128]
+  patch_nums: [1, 2, 4, 8, 16, 32]

@@ -18,7 +18,7 @@ dataloader:
   params:
     name: GlucoseSliding
     data: GlucoseSliding
-    datasets_dir: /Users/zhc/Documents/PhD/projects/drifting-model/AI-READI
+    datasets_dir: /playpen-shared/haochenz/AI-READI-Dataset/AI-READI-processed
     rel_path: glucose_{split}.parquet
     stride: 128
     window: 256

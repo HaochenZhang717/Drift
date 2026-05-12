@@ -18,7 +18,7 @@ dataloader:
   params:
     name: ErcotData
     data: ErcotData
-    datasets_dir: /Users/zhc/Documents/Time_Series_Datasets
+    datasets_dir: /mnt/unites8/playpen/haochenz/Time_Series_Datasets
     rel_path: ERCOT_merged.csv
     stride: 1
     window: 512

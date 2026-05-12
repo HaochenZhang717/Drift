@@ -18,7 +18,7 @@ quant_resi: 0.5
 share_quant_resi: 0
 default_qresi_counts: 0
 v_patch_nums: [1, 2, 4, 8, 16, 32, 64, 128]
-in_channels: 6
+in_channels: 1
 test_mode: False
 ch_mult: [1, 1, 2]
 loss: mse
@@ -29,11 +29,11 @@ lr_decay_rate: 0.5
 dataloader:
   target: Utils.data_provider_datasets.DataProviderWindowDataset
   params:
-    name: HouseholdData
-    data: HouseholdData
-    datasets_dir: /mnt/unites8/playpen/haochenz/Time_Series_Datasets
-    rel_path: HouseHold_6.csv
-    stride: 10
+    name: GlucoseSliding
+    data: GlucoseSliding
+    datasets_dir: /Users/zhc/Documents/PhD/projects/drifting-model/AI-READI
+    rel_path: glucose_{split}.parquet
+    stride: 128
     window: 512
     save2npy: True
 batch_size: 128
