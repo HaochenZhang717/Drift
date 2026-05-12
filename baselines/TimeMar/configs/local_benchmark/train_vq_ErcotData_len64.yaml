@@ -3,7 +3,7 @@ load_dir:
 load_ver:
 load_v_num:
 output_dir: ./output
-max_epochs: 5000
+max_epochs: 500
 val_every: 100
 devices: [0]
 model_name: DualVQVAE

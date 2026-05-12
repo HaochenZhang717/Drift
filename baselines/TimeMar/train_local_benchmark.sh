@@ -47,7 +47,7 @@ for dataset in ${DATASETS}; do
     run_name="${dataset}_len${length}"
     vq_config="${CONFIG_DIR}/train_vq_${run_name}.yaml"
     var_config="${CONFIG_DIR}/train_var_${run_name}.yaml"
-    vq_ckpt="${VQVAE_SAVE_ROOT}/vq_${run_name}/checkpoints/latest.pt"
+    vq_ckpt="${VQVAE_SAVE_ROOT}/vq_${run_name}/checkpoints/best.pt"
     var_save_dir="${VAR_SAVE_ROOT}/var_${run_name}"
 
     if [[ ! -f "${vq_config}" ]]; then
