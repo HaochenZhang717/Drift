@@ -1,0 +1,3 @@
+subfolder,checkpoint_file,generated_macro_f1_mean,real_macro_f1_mean
+cls_cond_jit_ckpt_sweep,cls_cond_jit_gap_checkpoint_epoch800_ema2.json,0.3420427733841723,0.3661279109404177
+mm_ckpt_sweep,mm_gap_checkpoint_epoch600_ema2.json,0.46882913409700466,0.3661279109404177

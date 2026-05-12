@@ -1,0 +1,76 @@
+# Baseline List for Time-Series Modality Imputation
+
+Goal: modality-level imputation in time series (recover a missing modality stream from remaining modalities), with fair and reproducible comparisons.
+
+## Reproduction Order (Top to Bottom)
+
+1. PSW-I (ICLR 2025)
+- Why first: strong recent time-series imputation baseline with public code and relatively stable training.
+- Task alignment: medium (primarily missing-value imputation, not strictly whole-modality missing).
+- Role in your paper: primary baseline (time-series imputation family).
+- Notes for adaptation: add modality-mask protocol so one full modality can be hidden per sample/time window.
+
+2. Global-IB (NeurIPS 2025)
+- Why second: recent strong TS imputation model with good competitiveness.
+- Task alignment: medium (general TS imputation; not explicitly modality-level by default).
+- Role in your paper: primary baseline (time-series imputation family).
+- Notes for adaptation: evaluate both random-feature missing and modality-level missing to show transfer gap.
+
+3. KPI (NeurIPS 2025)
+- Why third: another competitive modern imputation baseline to avoid single-method bias.
+- Task alignment: medium (general missing-data imputation, weakly modality-specific).
+- Role in your paper: primary/secondary baseline depending on adaptation quality.
+- Notes for adaptation: keep architecture unchanged; only change missingness generator and input mask interface.
+
+4. Diffusion-TS (ICLR 2024)
+- Why fourth: diffusion generator baseline adapted to imputation gives a strong generative reference.
+- Task alignment: medium-low (native task is generation, not modality imputation).
+- Role in your paper: secondary baseline (adapted generator).
+- Notes for adaptation: convert to conditional generation with observed modalities as condition; evaluate imputation metrics only.
+
+5. ImagenTime (NeurIPS 2024)
+- Why fifth: complementary generation-style model; useful robustness check.
+- Task alignment: medium-low (generation-first model).
+- Role in your paper: secondary baseline (adapted generator).
+- Notes for adaptation: same adaptation policy as Diffusion-TS; avoid over-tuning.
+
+6. IMDer (NeurIPS 2023)
+- Why sixth: representative missing-modality method with public code.
+- Task alignment: medium-low (incomplete multimodal emotion recognition, not pure TS modality imputation).
+- Role in your paper: cross-domain missing-modality baseline.
+- Notes for adaptation: keep original objective where possible; clearly mark task mismatch in table footnote.
+
+7. MD2N (ICCV 2025)
+- Why seventh: recent missing-modality method; useful as broad multimodal recovery reference.
+- Task alignment: medium-low (evaluated on MOSI/MOSEI MER settings).
+- Role in your paper: cross-domain missing-modality baseline.
+- Notes for adaptation: if no official code remains unavailable, report as "paper-reference" or reimplement only core module with explicit disclaimer.
+
+## Optional "Closer" Baselines (If Time Allows)
+
+8. VIMTS (BigData 2022)
+- Task alignment: relatively high for multimodal time-series imputation.
+- Caveat: engineering friction and ecosystem maturity may be lower.
+
+9. TSEst / attention-based multimodal imputation (SDM 2023)
+- Task alignment: medium-high (multimodal support), but protocol details should be checked carefully.
+
+## Protocol Rules (Must Keep Constant Across Baselines)
+
+- Missingness setups:
+  - Whole-modality missing (core): hide 1 modality entirely for a sample or for contiguous windows.
+  - Random missing (auxiliary): feature-level random masks for compatibility with TS imputation baselines.
+- Same splits, same preprocessing, same normalization.
+- Same evaluation seeds and repeat count.
+- Report both:
+  - Imputation quality (e.g., MAE/RMSE/CRPS depending on your setting)
+  - Downstream utility (if you use a downstream task)
+
+## Execution Plan You Can Follow Directly
+
+- Phase A (must): PSW-I -> Global-IB -> KPI
+- Phase B (should): Diffusion-TS -> ImagenTime
+- Phase C (cross-domain): IMDer -> MD2N
+- Phase D (optional): VIMTS / TSEst
+
+This ordering maximizes fairness first (time-series imputation), then breadth (generation adaptation), then cross-domain comparison (missing-modality multimodal learning).
