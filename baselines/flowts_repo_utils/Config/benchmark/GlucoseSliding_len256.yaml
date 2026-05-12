@@ -20,34 +20,25 @@ solver:
   save_cycle: 100
   ema:
     decay: 0.995
-    update_interval: 10
 
 dataloader:
   train_dataset:
-    target: Utils.Data_utils.repo_dataset.RepoWindowDataset
+    target: data_provider.datasets.glucose_sliding.GlucoseSliding
     params:
-      name: glucosesliding
       datasets_dir: /playpen-shared/haochenz/AI-READI-Dataset/AI-READI-processed
-      data_name: GlucoseSliding
-      rel_path_train: glucose_train.parquet
-      rel_path_valid: glucose_valid.parquet
-      window: 256
+      seq_len: 256
       stride: 128
-      period: train
-      save2npy: true
+      rel_path: glucose_{split}.parquet
+      flag: train
 
   val_dataset:
-    target: Utils.Data_utils.repo_dataset.RepoWindowDataset
+    target: data_provider.datasets.glucose_sliding.GlucoseSliding
     params:
-      name: glucosesliding
       datasets_dir: /playpen-shared/haochenz/AI-READI-Dataset/AI-READI-processed
-      data_name: GlucoseSliding
-      rel_path_train: glucose_train.parquet
-      rel_path_valid: glucose_valid.parquet
-      window: 256
+      seq_len: 256
       stride: 128
-      period: valid
-      save2npy: true
+      rel_path: glucose_{split}.parquet
+      flag: valid
 
   batch_size: 512
   sample_size: 512

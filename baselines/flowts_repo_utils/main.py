@@ -5,7 +5,6 @@ import numpy as np
 
 from engine.logger import Logger
 from engine.solver import Trainer
-from Data.build_dataloader import build_dataloader, build_dataloader_cond, build_eval_dataloader
 from Models.interpretable_diffusion.model_utils import unnormalize_to_zero_to_one
 from Utils.io_utils import load_yaml_config, seed_everything, merge_opts_to_config, instantiate_from_config
 from pathlib import Path
@@ -63,6 +62,59 @@ def replace_value_in_dict(d, old_value, new_value):
         return new_value if d == old_value else d
 
 
+def build_dataloader(config, args=None):
+    batch_size = config["dataloader"]["batch_size"]
+    shuffle = config["dataloader"]["shuffle"]
+    train_cfg = config["dataloader"]["train_dataset"]
+    train_cfg["params"]["output_dir"] = args.save_dir
+    dataset = instantiate_from_config(train_cfg)
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        num_workers=8,
+        pin_memory=True,
+        drop_last=shuffle,
+    )
+    return {"dataloader": dataloader, "dataset": dataset}
+
+
+def build_eval_dataloader(config, args=None):
+    dataset_cfg = config["dataloader"].get("val_dataset", config["dataloader"].get("test_dataset"))
+    if dataset_cfg is None:
+        return None
+    dataset_cfg["params"]["output_dir"] = args.save_dir
+    dataset = instantiate_from_config(dataset_cfg)
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=config["dataloader"].get("sample_size", config["dataloader"]["batch_size"]),
+        shuffle=False,
+        num_workers=8,
+        pin_memory=True,
+        drop_last=False,
+    )
+    return {"dataloader": dataloader, "dataset": dataset}
+
+
+def build_dataloader_cond(config, args=None):
+    dataset_cfg = config["dataloader"]["test_dataset"]
+    dataset_cfg["params"]["output_dir"] = args.save_dir
+    if args.mode == "infill":
+        dataset_cfg["params"]["missing_ratio"] = args.missing_ratio
+    elif args.mode == "predict":
+        dataset_cfg["params"]["predict_length"] = args.pred_len
+    dataset = instantiate_from_config(dataset_cfg)
+    dataloader = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=config["dataloader"].get("sample_size", config["dataloader"]["batch_size"]),
+        shuffle=False,
+        num_workers=8,
+        pin_memory=True,
+        drop_last=False,
+    )
+    return {"dataloader": dataloader, "dataset": dataset}
+
+
 
 def main():
     args = parse_args()
@@ -90,8 +142,8 @@ def main():
     logger = Logger(args)
     logger.save_config(config)
 
-
-    model = instantiate_from_config(config['model']).cuda()
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    model = instantiate_from_config(config['model']).to(device)
 
     if args.sample == 1 and args.mode in ['infill', 'predict']:
         test_dataloader_info = build_dataloader_cond(config, args)
@@ -124,9 +176,13 @@ def main():
     else:
         trainer.load(args.milestone)
         dataset = eval_dataloader_info['dataset'] if eval_dataloader_info is not None else dataloader_info['dataset']
-        samples = trainer.sample(num=len(dataset), size_every=2001, shape=[dataset.window, dataset.var_num])
-        if dataset.auto_norm:
-            samples = unnormalize_to_zero_to_one(samples)
+        sample0 = dataset[0]
+        if isinstance(sample0, (tuple, list)):
+            sample0 = sample0[0]
+        seq_len = int(sample0.shape[0])
+        n_feat = int(sample0.shape[-1]) if sample0.ndim > 1 else 1
+        samples = trainer.sample(num=len(dataset), size_every=2001, shape=[seq_len, n_feat])
+        # Keep samples in the normalized training space.
         np.save(os.path.join(args.save_dir, f'ddpm_fake_{args.name}_{args.long_len}_valid.npy'), samples)
 
 if __name__ == '__main__':

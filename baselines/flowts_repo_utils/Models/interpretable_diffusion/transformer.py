@@ -200,7 +200,7 @@ class FullAttention(nn.Module):
 
 
         if int(os.environ.get('hucfg_attention_rope_use', '-1')) == 1: 
-            freqs_cis = self.freqs_cis.cuda()[0 : T]
+            freqs_cis = self.freqs_cis.to(device=q.device)[0 : T]
             q, k = apply_rotary_emb(q.permute(0,2,1,3), k.permute(0,2,1,3), freqs_cis=freqs_cis)
             q, k = q.permute(0,2,1,3), k.permute(0,2,1,3)
 
@@ -281,7 +281,7 @@ class CrossAttention(nn.Module):
         k = k.view(B, T_E, self.n_head, C // self.n_head).transpose(1, 2)
         q = q.view(B, T, self.n_head, C // self.n_head).transpose(1, 2) # (B, nh, T, hs)
 
-        freqs_cis = self.freqs_cis.cuda()[0 : T]
+        freqs_cis = self.freqs_cis.to(k.device)[0 : T]
         q, k = apply_rotary_emb(q.permute(0,2,1,3), k.permute(0,2,1,3), freqs_cis=freqs_cis)
         q, k = q.permute(0,2,1,3), k.permute(0,2,1,3)
 

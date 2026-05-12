@@ -17,35 +17,28 @@ solver:
   base_lr: 1.0e-4
   max_epochs: 4001
   gradient_accumulate_every: 1
-  save_cycle: 200
+  save_cycle: 100
   ema:
     decay: 0.995
-    update_interval: 10
 
 dataloader:
   train_dataset:
-    target: Utils.Data_utils.repo_dataset.RepoWindowDataset
+    target: data_provider.datasets.local_timeseries.HouseholdData
     params:
-      name: household
       datasets_dir: /mnt/unites8/playpen/haochenz/Time_Series_Datasets
-      data_name: HouseholdData
       rel_path: HouseHold_6.csv
-      window: 128
+      seq_len: 128
       stride: 10
-      period: train
-      save2npy: true
+      flag: train
 
   val_dataset:
-    target: Utils.Data_utils.repo_dataset.RepoWindowDataset
+    target: data_provider.datasets.local_timeseries.HouseholdData
     params:
-      name: household
       datasets_dir: /mnt/unites8/playpen/haochenz/Time_Series_Datasets
-      data_name: HouseholdData
       rel_path: HouseHold_6.csv
-      window: 128
+      seq_len: 128
       stride: 10
-      period: valid
-      save2npy: true
+      flag: valid
 
   batch_size: 512
   sample_size: 512

@@ -4,6 +4,7 @@ import time
 import numpy as np
 import torch
 from pathlib import Path
+from copy import deepcopy
 from torch.optim import Adam
 from torch.nn.utils import clip_grad_norm_
 
@@ -24,25 +25,44 @@ class Trainer(object):
         self.eval_dataset = None if eval_dataloader is None else eval_dataloader["dataset"]
 
         self.epochs = config["solver"]["max_epochs"]
-        self.save_cycle = config["solver"]["save_cycle"]
+        self.save_cycle = 100
         self.step = 0
         self.milestone = 0
 
         base_lr = config["solver"].get("base_lr", 1.0e-4)
+        self.ema_decay = float(config["solver"].get("ema", {}).get("decay", 0.995))
         self.opt = Adam(filter(lambda p: p.requires_grad, self.model.parameters()), lr=base_lr, betas=(0.9, 0.999))
+        self.ema_model = deepcopy(self.model).eval()
+        for p in self.ema_model.parameters():
+            p.requires_grad_(False)
         self.results_folder = Path(args.save_dir)
         self.results_folder.mkdir(parents=True, exist_ok=True)
 
     def save(self, milestone):
-        data = {"step": self.step, "model": self.model.state_dict(), "opt": self.opt.state_dict()}
+        data = {
+            "step": self.step,
+            "model": self.model.state_dict(),
+            "ema_model": self.ema_model.state_dict(),
+            "opt": self.opt.state_dict(),
+            "ema_decay": self.ema_decay,
+        }
         torch.save(data, str(self.results_folder / f"checkpoint-{milestone}.pt"))
 
     def load(self, milestone):
         data = torch.load(str(self.results_folder / f"checkpoint-{milestone}.pt"), map_location=self.device)
         self.model.load_state_dict(data["model"])
+        if "ema_model" in data:
+            self.ema_model.load_state_dict(data["ema_model"])
         self.opt.load_state_dict(data["opt"])
         self.step = data["step"]
         self.milestone = milestone
+
+    @torch.no_grad()
+    def _update_ema(self):
+        online_state = self.model.state_dict()
+        ema_state = self.ema_model.state_dict()
+        for k in ema_state.keys():
+            ema_state[k].mul_(self.ema_decay).add_(online_state[k], alpha=1.0 - self.ema_decay)
 
     def train(self):
         tic = time.time()
@@ -57,6 +77,7 @@ class Trainer(object):
                 loss.backward()
                 clip_grad_norm_(self.model.parameters(), 1.0)
                 self.opt.step()
+                self._update_ema()
                 self.step += 1
                 epoch_losses.append(float(loss.item()))
 
@@ -69,9 +90,14 @@ class Trainer(object):
                 self.milestone += 1
                 self.save(self.milestone)
                 if self.eval_dataset is not None:
+                    sample0 = self.eval_dataset[0]
+                    if isinstance(sample0, (tuple, list)):
+                        sample0 = sample0[0]
+                    seq_len = int(sample0.shape[0])
+                    n_feat = int(sample0.shape[-1]) if sample0.ndim > 1 else 1
                     self.sample_to_file(
                         num=len(self.eval_dataset),
-                        shape=[self.eval_dataset.window, self.eval_dataset.var_num],
+                        shape=[seq_len, n_feat],
                         output_name=f"ddpm_fake_{self.args.name}_{self.args.long_len}_epoch{epoch+1}_valid.npy",
                     )
 
