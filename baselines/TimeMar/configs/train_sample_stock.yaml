@@ -1,0 +1,54 @@
+seed: 1234
+
+load_dir: log/vq_stock/version_0/checkpoints/best--epoch=499-fid=0.001299.ckpt
+load_ver: '4'
+load_v_num: 
+
+output_dir: output
+devices: [0]
+
+resume: True
+
+
+var_path: 
+  load_dir: log/var_stock/version_0/checkpoints/best--epoch=149-fid=0.0023.ckpt
+  load_ver: '1'
+  load_v_num: 
+
+lr: 1.0e-04
+lr_scheduler: step
+lr_decay_steps: 90
+lr_decay_rate: 0.5
+
+genaerated_data: False
+
+dataloader:
+  target: Utils.real_datasets.CustomDataset
+  params:
+    name: stock
+    proportion: 1.0  # Set to rate < 1 if training conditional generation
+    data_root: ./dataset/stock_data.csv
+    window: 24  # seq_length
+    save2npy: True
+    neg_one_to_one: True
+    seed: 123
+    period: train
+
+batch_size: 512
+
+vqvae_args:
+  vocab_size: 384
+  z_channels: 256
+  ch: 256
+  dropout: 0.0
+  beta: 0.25
+  using_znorm: True
+  quant_conv_ks: 3 
+  quant_resi: 0.5
+  share_quant_resi: 0
+  default_qresi_counts: 0
+  v_patch_nums:  [1, 2, 3, 4, 5, 6]
+  in_channels: 6
+  test_mode: True
+  ch_mult: [1,1,2]
+

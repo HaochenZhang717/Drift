@@ -1,0 +1,11 @@
+{
+  "dataname": "household",
+  "window_size": 64,
+  "down_t": 2,
+  "num_codes": 32,
+  "code_dim": 16,
+  "vqvae_ckpt": "./output/output_household/VQVAE64/net_best_ds.pth",
+  "data_str": "/Users/zhc/Documents/Time_Series_Datasets_HouseHold_6.csv_None_None_None_10_10_10_glucose",
+  "seq_len": 16,
+  "n_samples": 32670
+}

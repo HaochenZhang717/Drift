@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=2 DATASETS=ErcotData bash train_local_benchmark.sh

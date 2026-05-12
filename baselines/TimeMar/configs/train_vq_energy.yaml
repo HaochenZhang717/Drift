@@ -1,0 +1,46 @@
+seed: 1234
+
+load_dir:
+load_ver:
+load_v_num: 
+
+output_dir: ../output
+devices: [0]
+
+model_name: DualVQVAE
+
+vocab_size: 512
+z_channels: 256
+ch: 256
+dropout: 0.0
+beta: 0.25
+using_znorm: True
+quant_conv_ks: 3 
+quant_resi: 0.5
+share_quant_resi: 0
+default_qresi_counts: 0
+v_patch_nums:  [1, 2, 3, 4, 5, 6]
+in_channels: 28
+test_mode: False
+ch_mult: [1,1,2]
+loss: mse
+
+
+lr: 1.0e-04
+lr_scheduler: step
+lr_decay_steps: 500
+lr_decay_rate: 0.5
+
+dataloader:
+  target: Utils.real_datasets.CustomDataset
+  params:
+    name: energy
+    proportion: 1.0  # Set to rate < 1 if training conditional generation
+    data_root: ./dataset/energy_data.csv
+    window: 24  # seq_length
+    save2npy: True
+    neg_one_to_one: True
+    seed: 123
+    period: train
+
+batch_size: 128

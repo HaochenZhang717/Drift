@@ -1,0 +1,7 @@
+2026-05-12 19:10:30,137 INFO Iter 1: Loss=13.250607, CE=3.350591, Mean=0.000048, Std=0.990001, structure=0.000000, Acc=0.093750
+2026-05-12 19:20:39,424 INFO Iter 1: Loss=13.597940, CE=3.697916, Mean=0.000048, Std=0.990002, structure=0.000000, Acc=0.000000
+2026-05-12 19:20:39,571 INFO Saved 4 samples to ./checkpoints_household_64/samples/iter_00000001_samples.npy
+2026-05-12 20:19:01,043 INFO VQ-VAE parameters: total=71,798 (0.072M), trainable=71,798 (0.072M)
+2026-05-12 20:19:01,116 INFO SDFlow parameters: total=8,476,592 (8.477M), trainable=8,476,592 (8.477M)
+2026-05-12 20:19:01,567 INFO Iter 1: Loss=13.597940, CE=3.697916, Mean=0.000048, Std=0.990002, structure=0.000000, Acc=0.000000
+2026-05-12 20:19:01,696 INFO Saved 4 samples to ./checkpoints_household_64/samples/iter_00000001_samples.npy

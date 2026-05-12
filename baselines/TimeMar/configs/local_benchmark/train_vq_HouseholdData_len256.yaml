@@ -1,0 +1,39 @@
+seed: 1234
+load_dir:
+load_ver:
+load_v_num:
+output_dir: ./output
+max_epochs: 5000
+val_every: 100
+devices: [0]
+model_name: DualVQVAE
+vocab_size: 512
+z_channels: 128
+ch: 128
+dropout: 0.0
+beta: 0.25
+using_znorm: True
+quant_conv_ks: 3
+quant_resi: 0.5
+share_quant_resi: 0
+default_qresi_counts: 0
+v_patch_nums: [1, 2, 4, 8, 16, 32, 64]
+in_channels: 6
+test_mode: False
+ch_mult: [1, 1, 2]
+loss: mse
+lr: 1.0e-04
+lr_scheduler: step
+lr_decay_steps: 500
+lr_decay_rate: 0.5
+dataloader:
+  target: Utils.data_provider_datasets.DataProviderWindowDataset
+  params:
+    name: HouseholdData
+    data: HouseholdData
+    datasets_dir: /Users/zhc/Documents/Time_Series_Datasets
+    rel_path: HouseHold_6.csv
+    stride: 10
+    window: 256
+    save2npy: True
+batch_size: 128

@@ -1,0 +1,59 @@
+seed: 1234
+
+load_ver: '0'
+load_v_num:
+
+output_dir: ./output
+devices: [0]
+
+resume: False
+
+var_path:
+  load_dir:
+  load_ver: '1'
+  load_v_num:
+
+lr: 1.0e-4
+lr_scheduler: step
+lr_decay_steps: 90
+lr_decay_rate: 0.5
+
+genaerated_data: False
+
+dataloader:
+  target: Utils.npy_datasets.PreSplitNPYDataset
+  params:
+    name: istanbul
+    data_root: ../data/istanbul_traffic
+    window: 128
+    save2npy: True
+    neg_one_to_one: True
+    seed: 123
+
+batch_size: 256
+max_epochs: 900
+
+vqvae_args:
+  vocab_size: 512
+  z_channels: 256
+  ch: 256
+  dropout: 0.0
+  beta: 0.25
+  using_znorm: True
+  quant_conv_ks: 3
+  quant_resi: 0.5
+  share_quant_resi: 0
+  default_qresi_counts: 0
+  v_patch_nums: [1, 2, 4, 8, 16, 32]
+  in_channels: 1
+  test_mode: True
+  ch_mult: [1, 1, 2]
+
+var_args:
+  embed_dim: 512
+  block_size: 63      # sum([1,2,4,8,16]) = 31
+  num_layers: 1
+  n_head: 8
+  drop_out_rate: 0.0
+  fc_rate: 4
+  patch_nums: [1, 2, 4, 8, 16, 32]

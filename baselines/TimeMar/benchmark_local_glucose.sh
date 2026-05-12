@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=2 DATASETS=GlucoseSliding bash train_local_benchmark.sh

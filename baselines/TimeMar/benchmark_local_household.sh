@@ -1,0 +1,1 @@
+CUDA_VISIBLE_DEVICES=4 DATASETS=HouseholdData bash train_local_benchmark.sh

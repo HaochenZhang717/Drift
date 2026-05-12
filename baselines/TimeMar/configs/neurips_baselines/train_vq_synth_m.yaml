@@ -1,0 +1,45 @@
+seed: 1234
+
+load_dir:
+load_ver:
+load_v_num:
+
+output_dir: ./output
+devices: [0]
+
+model_name: DualVQVAE
+
+vocab_size: 512
+z_channels: 256
+ch: 256
+dropout: 0.0
+beta: 0.25
+using_znorm: True
+quant_conv_ks: 3
+quant_resi: 0.5
+share_quant_resi: 0
+default_qresi_counts: 0
+
+# 对 128 长度更稳的多尺度 patch 设置
+v_patch_nums: [1, 2, 4, 8, 16, 32]
+in_channels: 2
+test_mode: False
+ch_mult: [1, 1, 2]
+loss: mse
+
+lr: 1.0e-4
+lr_scheduler: step
+lr_decay_steps: 500
+lr_decay_rate: 0.5
+
+dataloader:
+  target: Utils.npy_datasets.PreSplitNPYDataset
+  params:
+    name: synth_m
+    data_root: ../data/synthetic_m
+    window: 128
+    save2npy: True
+    neg_one_to_one: True
+    seed: 123
+
+batch_size: 128
