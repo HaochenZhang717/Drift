@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #SBATCH --job-name=debug-mount
-#SBATCH --partition=all
+#SBATCH --partition=blackwell
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=1
