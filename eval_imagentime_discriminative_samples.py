@@ -107,12 +107,11 @@ def infer_test_count(run_name: str, config_root: Path) -> Optional[int]:
         "name": dataset_entry["name"],
         "data": dataset_entry["data"],
         "datasets_dir": cfg["datasets_dir"],
-        "rel_path": dataset_entry["rel_path"],
         "seq_len": int(cfg["seq_len"]),
         "flag": "test",
     }
 
-    for key in ["rel_path_train", "rel_path_valid", "window_stride", "ts_stride", "stride"]:
+    for key in ["rel_path", "rel_path_train", "rel_path_valid", "window_stride", "ts_stride", "stride"]:
         if key in dataset_entry:
             dataset_config[key] = dataset_entry[key]
 
