@@ -23,8 +23,22 @@ conda activate vlm
 export TORCH_DISTRIBUTED_DEBUG=DETAIL
 export NCCL_DEBUG=INFO
 
-OUTPUT_ROOT="/mnt/unites8/playpen/haochenz/Drift/baselines/FlowTS"
-mkdir -p "${OUTPUT_ROOT}"
+OUTPUT_ROOT_PRIMARY="/playpen/haochenz/Drift/baselines/FlowTS"
+OUTPUT_ROOT_FALLBACK="/mnt/unites8/playpen/haochenz/Drift/baselines/FlowTS"
+
+HOSTNAME_SHORT="$(hostname -s)"
+if [[ "${HOSTNAME_SHORT}" == "unites8" ]]; then
+  OUTPUT_ROOT="${OUTPUT_ROOT_PRIMARY}"
+else
+  OUTPUT_ROOT="${OUTPUT_ROOT_FALLBACK}"
+fi
+
+if ! mkdir -p "${OUTPUT_ROOT}" 2>/dev/null; then
+  echo "ERROR: unable to create output dir ${OUTPUT_ROOT} on host ${HOSTNAME_SHORT}"
+  exit 1
+fi
+
+echo "Host=${HOSTNAME_SHORT}, using OUTPUT_ROOT=${OUTPUT_ROOT}"
 
 CONFIG_FILE=${1:-/playpen-shared/haochenz/Drift/baselines/ImagenFew/configs/FlowTS/ErcotData_len256.yaml}
 
@@ -32,4 +46,3 @@ python /playpen-shared/haochenz/Drift/baselines/ImagenFew/run.py \
 --subset_p 1.0 \
 --log_dir "${OUTPUT_ROOT}" \
 --config ${CONFIG_FILE}
-
