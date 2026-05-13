@@ -532,34 +532,37 @@ def train(args):
             },
             step=epoch,
         )
-        if args.wandb_log_images_every > 0 and epoch % args.wandb_log_images_every == 0:
-            x_vis, recon_vis, mask_vis = collect_val_preview(model, val_loader, device, embedder)
-            log_payload = {
-                "viz/input_image": wandb.Image(x_vis[0, 0].numpy()),
-                "viz/recon_image": wandb.Image(recon_vis[0, 0].numpy()),
-            }
-            if mask_vis is not None:
-                log_payload["viz/pad_mask"] = wandb.Image(mask_vis[0, 0].numpy())
-            wb.log(log_payload, step=epoch)
+        # if args.wandb_log_images_every > 0 and epoch % args.wandb_log_images_every == 0:
+        #     x_vis, recon_vis, mask_vis = collect_val_preview(model, val_loader, device, embedder)
+        #     log_payload = {
+        #         "viz/input_image": wandb.Image(x_vis[0, 0].numpy()),
+        #         "viz/recon_image": wandb.Image(recon_vis[0, 0].numpy()),
+        #     }
+        #     if mask_vis is not None:
+        #         log_payload["viz/pad_mask"] = wandb.Image(mask_vis[0, 0].numpy())
+        #     wb.log(log_payload, step=epoch)
 
-        save_checkpoint(save_dir / "last.pt", model, optimizer, epoch, best_val_loss, args, metadata)
-        torch.save(model.state_dict(), save_dir / "last_state_dict.pt")
+        # save_checkpoint(save_dir / "last.pt", model, optimizer, epoch, best_val_loss, args, metadata)
+        # torch.save(model.state_dict(), save_dir / "last_state_dict.pt")
         if val_metrics["loss"] < best_val_loss:
             best_val_loss = val_metrics["loss"]
             save_checkpoint(save_dir / "best.pt", model, optimizer, epoch, best_val_loss, args, metadata)
             torch.save(model.state_dict(), save_dir / "best_state_dict.pt")
             print(f"Saved BEST model: {save_dir / 'best.pt'}", flush=True)
 
-        if args.save_every > 0 and epoch % args.save_every == 0:
-            save_checkpoint(
-                save_dir / f"epoch_{epoch:04d}.pt",
-                model,
-                optimizer,
-                epoch,
-                best_val_loss,
-                args,
-                metadata,
-            )
+        # if args.save_every > 0 and epoch % args.save_every == 0:
+        #     save_checkpoint(
+        #         save_dir / f"epoch_{epoch:04d}.pt",
+        #         model,
+        #         optimizer,
+        #         epoch,
+        #         best_val_loss,
+        #         args,
+        #         metadata,
+        #     )
+
+    save_checkpoint(save_dir / "last.pt", model, optimizer, epoch, best_val_loss, args, metadata)
+    torch.save(model.state_dict(), save_dir / "last_state_dict.pt")
 
     wb.finish()
 
