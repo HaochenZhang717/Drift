@@ -30,6 +30,9 @@ SAVE_ROOT=${SAVE_ROOT:-./fid_vae_ckpts/soft_vqvae_benchmark}
 TS_SEQ_LEN=${TS_SEQ_LEN:-128}
 DELAY=${DELAY:-4}
 EMBEDDING=${EMBEDDING:-32}
+TEMPERATURE=${TEMPERATURE:-0.07}
+NUM_CODES=${NUM_CODES:-512}
+KL_WEIGHT=${KL_WEIGHT:-0.01}
 
 python train_soft_vqvae_benchmark.py \
   --dataset_name ErcotData \
@@ -43,10 +46,9 @@ python train_soft_vqvae_benchmark.py \
   --hidden_size 32 \
   --num_layers 2 \
   --code_dim 8 \
-  --num_codes 512 \
+  --num_codes "${NUM_CODES}" \
   --ch_mult 1,2,2,4 \
-  --temperature 0.07 \
-  --kl_weight 0.01 \
+  --temperature "${TEMPERATURE}" \
+  --kl_weight "${KL_WEIGHT}" \
   --save_dir "${SAVE_ROOT}" \
   --device "${DEVICE}"
-
