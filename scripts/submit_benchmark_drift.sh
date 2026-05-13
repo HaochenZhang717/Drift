@@ -22,6 +22,9 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
   REL_PATH_TRAIN=glucose_train.parquet \
   REL_PATH_VALID=glucose_valid.parquet \
   STRIDE=128 \
+  EPOCHS=4001 \
+  BATCH_SIZE=512 \
+  BS_POS=1024 \
   TS_LEN="${TSLEN}" \
   IMG_SIZE="${IMG_SIZE}" \
   IN_CHANNEL=1 \
