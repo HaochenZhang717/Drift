@@ -5,7 +5,7 @@ set -euo pipefail
 # Edit TS_LENGTHS and (optionally) DRIFT_LOSS_MODE below as needed.
 
 TS_LENGTHS=(64 128 256 512)
-DRIFT_LOSS_MODE=${DRIFT_LOSS_MODE:-vqvae}
+DRIFT_LOSS_MODE=${DRIFT_LOSS_MODE:-time_series}
 
 
 for TSLEN in "${TS_LENGTHS[@]}"; do
@@ -40,54 +40,54 @@ for TSLEN in "${TS_LENGTHS[@]}"; do
   sbatch scripts/benchmark_drift.sh
 
   # ERCOT
-  DATASETS_DIR=/mnt/unites8/playpen/haochenz/Time_Series_Datasets \
-  DATA_BACKEND=ErcotData \
-  DATASET_NAME=ErcotData \
-  REL_PATH=ERCOT_merged.csv \
-  REL_PATH_TRAIN= \
-  REL_PATH_VALID= \
-  STRIDE=1 \
-  TS_LEN="${TSLEN}" \
-  IMG_SIZE="${IMG_SIZE}" \
-  IN_CHANNEL=1 \
-  DRIFT_LOSS_MODE="${DRIFT_LOSS_MODE}" \
-  VAE_ROOT=/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_ercot_${TSLEN} \
-  VAE_CKPT_NAME=best.pt \
-  VQVAE_CKPT_PATH=/mnt/unites8/playpen/haochenz/Drift/vqvae_ckpts/benchmark_ercot_${TSLEN}/ErcotData/best.pt \
-  VQVAE_HIDDEN_SIZE=32 \
-  VQVAE_NUM_LAYERS=1 \
-  VQVAE_CODE_DIM=4 \
-  VQVAE_NUM_CODES=150 \
-  VQVAE_LATENT_DOWNSAMPLE=16 \
-  VQVAE_DECODER_UPSAMPLE_RATE=4 \
-  VQVAE_DROPOUT=0.1 \
-  VQVAE_COMMITMENT_WEIGHT=0.25 \
-  sbatch scripts/benchmark_drift.sh
+#  DATASETS_DIR=/mnt/unites8/playpen/haochenz/Time_Series_Datasets \
+#  DATA_BACKEND=ErcotData \
+#  DATASET_NAME=ErcotData \
+#  REL_PATH=ERCOT_merged.csv \
+#  REL_PATH_TRAIN= \
+#  REL_PATH_VALID= \
+#  STRIDE=1 \
+#  TS_LEN="${TSLEN}" \
+#  IMG_SIZE="${IMG_SIZE}" \
+#  IN_CHANNEL=1 \
+#  DRIFT_LOSS_MODE="${DRIFT_LOSS_MODE}" \
+#  VAE_ROOT=/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_ercot_${TSLEN} \
+#  VAE_CKPT_NAME=best.pt \
+#  VQVAE_CKPT_PATH=/mnt/unites8/playpen/haochenz/Drift/vqvae_ckpts/benchmark_ercot_${TSLEN}/ErcotData/best.pt \
+#  VQVAE_HIDDEN_SIZE=32 \
+#  VQVAE_NUM_LAYERS=1 \
+#  VQVAE_CODE_DIM=4 \
+#  VQVAE_NUM_CODES=150 \
+#  VQVAE_LATENT_DOWNSAMPLE=16 \
+#  VQVAE_DECODER_UPSAMPLE_RATE=4 \
+#  VQVAE_DROPOUT=0.1 \
+#  VQVAE_COMMITMENT_WEIGHT=0.25 \
+#  sbatch scripts/benchmark_drift.sh
 
   # Household
-  DATASETS_DIR=/mnt/unites8/playpen/haochenz/Time_Series_Datasets \
-  DATA_BACKEND=HouseholdData \
-  DATASET_NAME=HouseholdData \
-  REL_PATH=HouseHold_6.csv \
-  REL_PATH_TRAIN= \
-  REL_PATH_VALID= \
-  STRIDE=10 \
-  TS_LEN="${TSLEN}" \
-  IMG_SIZE="${IMG_SIZE}" \
-  IN_CHANNEL=6 \
-  DRIFT_LOSS_MODE="${DRIFT_LOSS_MODE}" \
-  VAE_ROOT=/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_household_${TSLEN} \
-  VAE_CKPT_NAME=best.pt \
-  VQVAE_CKPT_PATH=/mnt/unites8/playpen/haochenz/Drift/vqvae_ckpts/benchmark_household_${TSLEN}/HouseholdData/best.pt \
-  VQVAE_HIDDEN_SIZE=32 \
-  VQVAE_NUM_LAYERS=1 \
-  VQVAE_CODE_DIM=8 \
-  VQVAE_NUM_CODES=150 \
-  VQVAE_LATENT_DOWNSAMPLE=16 \
-  VQVAE_DECODER_UPSAMPLE_RATE=4 \
-  VQVAE_DROPOUT=0.1 \
-  VQVAE_COMMITMENT_WEIGHT=0.25 \
-  sbatch scripts/benchmark_drift.sh
+#  DATASETS_DIR=/mnt/unites8/playpen/haochenz/Time_Series_Datasets \
+#  DATA_BACKEND=HouseholdData \
+#  DATASET_NAME=HouseholdData \
+#  REL_PATH=HouseHold_6.csv \
+#  REL_PATH_TRAIN= \
+#  REL_PATH_VALID= \
+#  STRIDE=10 \
+#  TS_LEN="${TSLEN}" \
+#  IMG_SIZE="${IMG_SIZE}" \
+#  IN_CHANNEL=6 \
+#  DRIFT_LOSS_MODE="${DRIFT_LOSS_MODE}" \
+#  VAE_ROOT=/mnt/unites8/playpen/haochenz/Drift/fid_vae_ckpts/benchmark_household_${TSLEN} \
+#  VAE_CKPT_NAME=best.pt \
+#  VQVAE_CKPT_PATH=/mnt/unites8/playpen/haochenz/Drift/vqvae_ckpts/benchmark_household_${TSLEN}/HouseholdData/best.pt \
+#  VQVAE_HIDDEN_SIZE=32 \
+#  VQVAE_NUM_LAYERS=1 \
+#  VQVAE_CODE_DIM=8 \
+#  VQVAE_NUM_CODES=150 \
+#  VQVAE_LATENT_DOWNSAMPLE=16 \
+#  VQVAE_DECODER_UPSAMPLE_RATE=4 \
+#  VQVAE_DROPOUT=0.1 \
+#  VQVAE_COMMITMENT_WEIGHT=0.25 \
+#  sbatch scripts/benchmark_drift.sh
 done
 
 

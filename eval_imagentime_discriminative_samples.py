@@ -158,7 +158,13 @@ def main() -> None:
 
         run_scores: List[float] = []
         for run_idx in range(args.num_runs):
-            score = float(discriminative_score_metrics(real_sig, gen_sig, device))
+            # Re-sample a new paired evaluation set each run so multi-run stats include
+            # both discriminator randomness and sample-selection randomness.
+            sample_idx = np.random.choice(n_eval, size=n_eval, replace=True)
+            run_real = real_sig[sample_idx]
+            run_gen = gen_sig[sample_idx]
+
+            score = float(discriminative_score_metrics(run_real, run_gen, device))
             run_scores.append(score)
             print(f"  run {run_idx + 1:02d}/{args.num_runs}: disc={score:.6f}")
 

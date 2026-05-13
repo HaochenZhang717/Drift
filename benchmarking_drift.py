@@ -541,6 +541,16 @@ def train(
     #     seed=seed,
     # )
     print(f"Dataset sizes | train: {len(train_dataset)} | test: {len(test_dataset)}")
+    test_eval_size = len(test_dataset)
+    real_sig_test = collect_real_time_series(
+        test_dataset,
+        config,
+        device,
+        num_samples=test_eval_size,
+        batch_size=batch_size,
+        num_workers=num_workers,
+    ).numpy().astype(np.float32)
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=batch_size,
@@ -878,6 +888,46 @@ def train(
             #         },
             #         step=global_step,
             #     )
+
+        # Every 100 epochs: generate test-sized samples and evaluate discriminative score.
+        if (epoch + 1) % 100 == 0:
+            try:
+                from metrics.discriminative_torch import discriminative_score_metrics
+
+                gen_sig_test = generate_time_series_samples(
+                    ema.shadow,
+                    config,
+                    device,
+                    num_samples=test_eval_size,
+                    batch_size=batch_size,
+                ).numpy().astype(np.float32)
+
+                disc_score = float(
+                    discriminative_score_metrics(real_sig_test, gen_sig_test, device)
+                )
+                print(
+                    f"Epoch {epoch+1} | test discriminative score (n={test_eval_size}): "
+                    f"{disc_score:.6f}"
+                )
+                if wandb_run is not None:
+                    wandb.log(
+                        {
+                            "metric/test/disc_epoch100": disc_score,
+                            "metric/test/disc_epoch100_num_samples": test_eval_size,
+                            "metric/test/disc_epoch100_epoch": epoch + 1,
+                        },
+                        step=global_step,
+                    )
+            except Exception as exc:
+                print(f"Epoch {epoch+1} discriminative evaluation failed: {exc}")
+                if wandb_run is not None:
+                    wandb.log(
+                        {
+                            "metric/test/disc_epoch100_failed": 1,
+                            "metric/test/disc_epoch100_error": str(exc),
+                        },
+                        step=global_step,
+                    )
 
     # Final checkpoint
     final_path = output_dir / "checkpoint_final.pt"
