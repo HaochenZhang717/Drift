@@ -222,7 +222,7 @@ def make_image_embedder(args, seq_len: int, device: torch.device) -> DelayEmbedd
 
 def infer_image_shape(args, sample: torch.Tensor, device: torch.device) -> tuple[int, int]:
     embedder = make_image_embedder(args, sample.shape[-1], device)
-    image, _ = series_batch_to_images(sample.unsqueeze(0).to(device), embedder, mask_padding_loss=True)
+    image, _ = series_batch_to_images(sample.unsqueeze(0).to(device), embedder)
     if image.shape[-1] != image.shape[-2]:
         raise ValueError(f"Delay image must be square after padding, got {tuple(image.shape)}")
     return int(image.shape[1]), int(image.shape[-1])

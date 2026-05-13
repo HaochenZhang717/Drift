@@ -527,8 +527,13 @@ class SoftVQVAE(nn.Module):
         if mask is None:
             recon_loss = F.mse_loss(recon, x)
         else:
-            denom = mask.sum().clamp_min(1.0)
-            recon_loss = ((recon - x).square() * mask).sum() / denom
+            # Per-sample masked MSE so each sample contributes equally even
+            # when valid (non-padded) pixel counts differ across the batch.
+            sq_err = (recon - x).square()
+            weighted = sq_err * mask
+            per_sample_num = weighted.flatten(1).sum(dim=1)
+            per_sample_den = mask.flatten(1).sum(dim=1).clamp_min(1.0)
+            recon_loss = (per_sample_num / per_sample_den).mean()
         loss = recon_weight * recon_loss + kl_weight * kl_loss
         return {
             "loss": loss,

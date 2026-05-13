@@ -18,7 +18,8 @@ class Handler(generativeHandler):
             lr=base_lr,
             betas=(0.9, 0.999),
         )
-        self.ema = LitEma(self.model, decay=0.995, use_num_upates=True, warmup=args.ema_warmup)
+        ema_warmup = getattr(args, "ema_warmup", 0) or 0
+        self.ema = LitEma(self.model, decay=0.995, use_num_upates=True, warmup=ema_warmup)
         self.step = 0
 
     def build_model(self):
@@ -56,4 +57,3 @@ class Handler(generativeHandler):
                 self.ema.restore(self.model.parameters())
 
         return EMAScope(self.model, self.ema)
-

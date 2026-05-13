@@ -1,3 +1,26 @@
+# training:
+epochs: 4001
+batch_size: 512
+learning_rate: 0.0001
+weight_decay: 0.00001
+# logging:
+logging_iter: 100
+tags: []
+run_dir: FlowTS/HouseholdData_len512/
+# Data
+datasets_dir: /mnt/unites8/playpen/haochenz/Time_Series_Datasets
+seq_len: 512
+pretrain: false
+datasets:
+  - name: HouseholdData
+    data: HouseholdData
+    rel_path: HouseHold_6.csv
+    window_stride: 10
+    ts_stride: 10
+    stride: 10
+train_on_datasets:
+  - HouseholdData
+
 handler: models.FlowTS.handler
 model:
   target: models.interpretable_diffusion_flowts.FMTS.FM_TS

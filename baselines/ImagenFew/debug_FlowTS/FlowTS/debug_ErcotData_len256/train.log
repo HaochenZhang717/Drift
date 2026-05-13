@@ -1,0 +1,19 @@
+2026-05-13 11:03:25,388 - INFO - Run log file: /Users/zhc/Documents/PhD/projects/drifting-model/baselines/ImagenFew/debug_FlowTS/FlowTS/debug_ErcotData_len256/train.log
+2026-05-13 11:03:25,451 - WARNING - Matplotlib created a temporary cache directory at /var/folders/zg/smv48mg5027302z8ynn9jdpc0000gn/T/matplotlib-2efuitf2 because the default path (/Users/zhc/.matplotlib) is not a writable directory; it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+2026-05-13 11:03:25,916 - INFO - Failed to extract font properties from /System/Library/Fonts/Supplemental/NISC18030.ttf: In FT2Font: Could not set the fontsize (invalid pixel size; error code 0x17)
+2026-05-13 11:03:25,921 - INFO - Failed to extract font properties from /System/Library/Fonts/Apple Color Emoji.ttc: In FT2Font: Could not set the fontsize (invalid pixel size; error code 0x17)
+2026-05-13 11:03:25,957 - INFO - Failed to extract font properties from /System/Library/Fonts/LastResort.otf: tuple indices must be integers or slices, not str
+2026-05-13 11:03:25,970 - INFO - generated new fontManager
+2026-05-13 11:03:26,163 - INFO - Dataset ErcotData sample count -> train: 41812, valid: 10262
+2026-05-13 11:03:26,163 - INFO - ErcotData dataset is ready.
+2026-05-13 11:03:26,873 - INFO - number of model parameters: 1644787
+2026-05-13 11:03:56,644 - INFO - Run log file: /Users/zhc/Documents/PhD/projects/drifting-model/baselines/ImagenFew/debug_FlowTS/FlowTS/debug_ErcotData_len256/train.log
+2026-05-13 11:03:56,665 - WARNING - Matplotlib created a temporary cache directory at /var/folders/zg/smv48mg5027302z8ynn9jdpc0000gn/T/matplotlib-ijpv2l8e because the default path (/Users/zhc/.matplotlib) is not a writable directory; it is highly recommended to set the MPLCONFIGDIR environment variable to a writable directory, in particular to speed up the import of Matplotlib and to better support multiprocessing.
+2026-05-13 11:03:56,791 - INFO - Failed to extract font properties from /System/Library/Fonts/LastResort.otf: tuple indices must be integers or slices, not str
+2026-05-13 11:03:56,795 - INFO - Failed to extract font properties from /System/Library/Fonts/Supplemental/NISC18030.ttf: In FT2Font: Could not set the fontsize (invalid pixel size; error code 0x17)
+2026-05-13 11:03:56,805 - INFO - Failed to extract font properties from /System/Library/Fonts/Apple Color Emoji.ttc: In FT2Font: Could not set the fontsize (invalid pixel size; error code 0x17)
+2026-05-13 11:03:56,827 - INFO - generated new fontManager
+2026-05-13 11:03:56,922 - INFO - Dataset ErcotData sample count -> train: 654, valid: 161
+2026-05-13 11:03:56,922 - INFO - ErcotData dataset is ready.
+2026-05-13 11:03:57,269 - INFO - number of model parameters: 1644787
+2026-05-13 11:04:25,935 - INFO - Finetune is complete
