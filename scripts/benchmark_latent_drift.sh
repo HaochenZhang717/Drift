@@ -67,7 +67,7 @@ python benchmarking_latent_drift.py \
   --batch_n_pos 1024 \
   --batch_n_neg 512 \
   --temperatures 0.02,0.05,0.2 \
-  --lr 1e-4 \
+  --lr 1e-5 \
   --weight_decay 1e-4 \
   --grad_clip 1.0 \
   --ema_decays 0.999,0.995,0.99 \

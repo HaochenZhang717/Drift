@@ -22,6 +22,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset
+try:
+    import wandb
+except ImportError:
+    wandb = None
 
 from data_provider.data_provider import get_test, get_train
 from drifting import compute_V
@@ -352,6 +356,17 @@ def train(
 
     output_dir = Path(output_dir) / config["dataset_name"]
     output_dir.mkdir(parents=True, exist_ok=True)
+    wb = None
+    if wandb is not None:
+        run_name = f"{config['dataset_name']}_len{config['ts_seq_len']}_latent_drift"
+        wb = wandb.init(
+            project="drifting-model",
+            name=run_name,
+            config={**config, "output_dir": str(output_dir)},
+            dir=str(output_dir),
+        )
+    else:
+        print("wandb is not installed. Continuing without wandb logging.")
 
     train_ds_raw = get_train(build_dataset_config(config, "train"))
     test_ds_raw = get_test(build_dataset_config(config, "test"))
@@ -442,6 +457,18 @@ def train(
                     f"|V|: {info['v_norm']:.4f} | Grad: {info['grad_norm']:.4f} | "
                     f"LR: {scheduler.get_lr():.6f}"
                 )
+            if wb is not None:
+                wb.log(
+                    {
+                        "train/loss_step": info["loss"],
+                        "train/drift_norm_step": info["drift_norm"],
+                        "train/v_norm_step": info["v_norm"],
+                        "train/grad_norm_step": info["grad_norm"],
+                        "train/lr": scheduler.get_lr(),
+                        "train/epoch": epoch + 1,
+                    },
+                    step=global_step,
+                )
 
             if max_train_batches is not None and (batch_idx + 1) >= max_train_batches:
                 break
@@ -450,6 +477,17 @@ def train(
         avg_loss = loss_sum / max(n_batches, 1)
         avg_drift = drift_sum / max(n_batches, 1)
         print(f"\nEpoch {epoch+1} completed in {epoch_time:.1f}s | Avg Loss: {avg_loss:.4f} | Avg Drift: {avg_drift:.4f}\n")
+        if wb is not None:
+            wb.log(
+                {
+                    "epoch/avg_loss": avg_loss,
+                    "epoch/avg_drift": avg_drift,
+                    "epoch/time_sec": epoch_time,
+                    "epoch/n_batches": n_batches,
+                    "epoch/index": epoch + 1,
+                },
+                step=global_step,
+            )
 
 
         if epoch > 0 and epoch % 100 == 0:
@@ -510,6 +548,8 @@ def train(
             final_ema_path,
         )
     print(f"Training complete. Final checkpoint: {final_path}")
+    if wb is not None:
+        wb.finish()
 
 
 def main():
