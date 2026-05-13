@@ -355,6 +355,7 @@ class SoftVectorQuantizer2D(nn.Module):
         code_dim: int,
         temperature: float = 0.07,
         learnable_temperature: bool = False,
+        l2_norm: bool = False,
         eps: float = 1e-8,
     ):
         super().__init__()
@@ -367,6 +368,7 @@ class SoftVectorQuantizer2D(nn.Module):
 
         self.num_codes = num_codes
         self.code_dim = code_dim
+        self.l2_norm = l2_norm
         self.eps = eps
         self.codebook = nn.Embedding(num_codes, code_dim)
         self.codebook.weight.data.uniform_(-1.0 / num_codes, 1.0 / num_codes)
@@ -390,12 +392,15 @@ class SoftVectorQuantizer2D(nn.Module):
 
         flat = z_e.permute(0, 2, 3, 1).contiguous().view(-1, dim)
         codebook = self.codebook.weight
-        distances = (
-            flat.pow(2).sum(dim=1, keepdim=True)
-            - 2.0 * flat @ codebook.t()
-            + codebook.pow(2).sum(dim=1, keepdim=True).t()
-        )
-        probs = F.softmax(-distances / self.temperature, dim=-1)
+        if self.l2_norm:
+            flat = F.normalize(flat, p=2, dim=-1)
+            codebook = F.normalize(codebook, p=2, dim=-1)
+
+        # Align with SoftVQ implementation style:
+        # 1) logits are dot-product similarities
+        # 2) entropy branch uses detached codebook
+        logits = flat @ codebook.detach().t()
+        probs = F.softmax(logits / self.temperature, dim=-1)
         quantized_flat = probs @ codebook
         z_q = quantized_flat.view(bsz, height, width, dim).permute(0, 3, 1, 2).contiguous()
 
@@ -439,6 +444,7 @@ class SoftVQVAE(nn.Module):
         resamp_with_conv: bool = True,
         temperature: float = 0.07,
         learnable_temperature: bool = False,
+        l2_norm: bool = False,
         attn_type: str = "vanilla",
         tanh_out: bool = False,
     ):
@@ -470,6 +476,7 @@ class SoftVQVAE(nn.Module):
             code_dim=code_dim,
             temperature=temperature,
             learnable_temperature=learnable_temperature,
+            l2_norm=l2_norm,
         )
         self.decoder = Decoder(
             ch=hidden_size,

@@ -66,6 +66,7 @@ def get_args():
     parser.add_argument("--dropout", type=float, default=0.1)
     parser.add_argument("--temperature", type=float, default=0.07)
     parser.add_argument("--learnable_temperature", action="store_true")
+    parser.add_argument("--l2_norm", action="store_true")
     parser.add_argument("--tanh_out", action="store_true")
     parser.add_argument("--one_channel", action="store_true")
 
@@ -76,6 +77,7 @@ def get_args():
     parser.add_argument("--wandb", action="store_true")
     parser.add_argument("--wandb_project", type=str, default="drifting-model")
     parser.add_argument("--wandb_run_name", type=str, default=None)
+    parser.add_argument("--wandb_log_images_every", type=int, default=0)
 
     args = parser.parse_args()
     if args.rel_path is None and not (args.rel_path_train and args.rel_path_valid):
@@ -338,6 +340,21 @@ def log_metrics(prefix: str, metrics: dict[str, float], epoch: int) -> None:
     print(f"{prefix} epoch {epoch}: " + " | ".join(pieces), flush=True)
 
 
+@torch.no_grad()
+def collect_val_preview(
+    model: SoftVQVAE,
+    val_loader: DataLoader,
+    device: torch.device,
+    embedder: DelayEmbedder,
+):
+    model.eval()
+    batch = next(iter(val_loader))
+    series = batch[0].to(device, non_blocking=True)
+    x, pad_mask = series_batch_to_images(series, embedder)
+    out = model(x)
+    return x.detach().cpu(), out["recon"].detach().cpu(), None if pad_mask is None else pad_mask.detach().cpu()
+
+
 def train(args):
     set_seed(args.seed)
     device = torch.device(args.device if args.device != "cuda" or torch.cuda.is_available() else "cpu")
@@ -383,6 +400,7 @@ def train(args):
         dropout=args.dropout,
         temperature=args.temperature,
         learnable_temperature=args.learnable_temperature,
+        l2_norm=args.l2_norm,
         tanh_out=args.tanh_out,
     ).to(device)
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
@@ -428,9 +446,12 @@ def train(args):
     if args.wandb:
         if wandb is None:
             raise ImportError("wandb is not installed. Please install wandb or run without --wandb.")
+        run_name = args.wandb_run_name
+        if run_name is None:
+            run_name = f"softvq_{args.dataset_name}_len{seq_len}_d{args.delay}_e{args.embedding}"
         wb = wandb.init(
             project=args.wandb_project,
-            name=args.wandb_run_name,
+            name=run_name,
             config={**vars(args), **metadata, "save_dir": str(save_dir)},
             dir=str(save_dir),
         )
@@ -450,7 +471,7 @@ def train(args):
         log_metrics("val", val_metrics, epoch)
 
         if wb is not None:
-            wandb.log(
+            wb.log(
                 {
                     **{f"train/{key}": value for key, value in train_metrics.items()},
                     **{f"val/{key}": value for key, value in val_metrics.items()},
@@ -460,6 +481,15 @@ def train(args):
                 },
                 step=epoch,
             )
+            if args.wandb_log_images_every > 0 and epoch % args.wandb_log_images_every == 0:
+                x_vis, recon_vis, mask_vis = collect_val_preview(model, val_loader, device, embedder)
+                log_payload = {
+                    "viz/input_image": wandb.Image(x_vis[0, 0].numpy()),
+                    "viz/recon_image": wandb.Image(recon_vis[0, 0].numpy()),
+                }
+                if mask_vis is not None:
+                    log_payload["viz/pad_mask"] = wandb.Image(mask_vis[0, 0].numpy())
+                wb.log(log_payload, step=epoch)
 
         save_checkpoint(save_dir / "last.pt", model, optimizer, epoch, best_val_loss, args, metadata)
         torch.save(model.state_dict(), save_dir / "last_state_dict.pt")
