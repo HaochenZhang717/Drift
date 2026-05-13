@@ -1,0 +1,16 @@
+python train_soft_vqvae_benchmark.py \
+  --dataset_name GlucoseSliding \
+  --data GlucoseSliding \
+  --datasets_dir ./AI-READI \
+  --rel_path 'glucose_{split}.parquet' \
+  --ts_seq_len 128 \
+  --stride 128 \
+  --delay 4 \
+  --embedding 32 \
+  --hidden_size 32 \
+  --num_layers 2 \
+  --code_dim 16 \
+  --num_codes 512 \
+  --ch_mult 1,2,4 \
+  --temperature 0.07 \
+  --kl_weight 0.01

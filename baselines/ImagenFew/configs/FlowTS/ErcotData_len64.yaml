@@ -1,0 +1,46 @@
+handler: models.FlowTS.handler
+model:
+  target: models.interpretable_diffusion_flowts.FMTS.FM_TS
+  params:
+    seq_length: 64
+    feature_size: 1
+    n_layer_enc: 4
+    n_layer_dec: 3
+    d_model: 96
+    n_heads: 4
+    mlp_hidden_times: 4
+    attn_pd: 0.0
+    resid_pd: 0.0
+    kernel_size: 1
+    padding_size: 0
+
+solver:
+  base_lr: 1.0e-4
+  max_epochs: 4001
+  gradient_accumulate_every: 1
+  save_cycle: 100
+  ema:
+    decay: 0.995
+
+dataloader:
+  train_dataset:
+    target: data_provider.datasets.local_timeseries.ErcotData
+    params:
+      datasets_dir: /mnt/unites8/playpen/haochenz/Time_Series_Datasets
+      rel_path: ERCOT_merged.csv
+      seq_len: 64
+      stride: 1
+      flag: train
+
+  val_dataset:
+    target: data_provider.datasets.local_timeseries.ErcotData
+    params:
+      datasets_dir: /mnt/unites8/playpen/haochenz/Time_Series_Datasets
+      rel_path: ERCOT_merged.csv
+      seq_len: 64
+      stride: 1
+      flag: valid
+
+  batch_size: 512
+  sample_size: 512
+  shuffle: true
