@@ -360,7 +360,7 @@ def train(
     if wandb is not None:
         run_name = f"{config['dataset_name']}_len{config['ts_seq_len']}_latent_drift"
         wb = wandb.init(
-            project="drifting-model",
+            project="latent-drifting-model",
             name=run_name,
             config={**config, "output_dir": str(output_dir)},
             dir=str(output_dir),
