@@ -46,6 +46,7 @@ def get_args():
     parser.add_argument("--lr", type=float, default=5e-4)
     parser.add_argument("--weight_decay", type=float, default=1e-3)
     parser.add_argument("--recon_weight", type=float, default=1.0)
+    parser.add_argument("--ts_recon_weight", type=float, default=1.0)
     parser.add_argument("--kl_weight", type=float, default=0.01)
     parser.add_argument("--grad_clip", type=float, default=1.0)
     parser.add_argument("--num_workers", type=int, default=0)
@@ -69,14 +70,12 @@ def get_args():
     parser.add_argument("--l2_norm", action="store_true")
     parser.add_argument("--tanh_out", action="store_true")
     parser.add_argument("--one_channel", action="store_true")
+    parser.add_argument("--ts_loss_type", type=str, default="l2", choices=["l1", "l2"])
 
     parser.add_argument("--save_dir", type=str, default="./fid_vae_ckpts/soft_vqvae_benchmark")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--save_every", type=int, default=0)
-    parser.add_argument("--wandb", action="store_true")
-    parser.add_argument("--wandb_project", type=str, default="drifting-model")
-    parser.add_argument("--wandb_run_name", type=str, default=None)
     parser.add_argument("--wandb_log_images_every", type=int, default=0)
 
     args = parser.parse_args()
@@ -218,6 +217,48 @@ def series_batch_to_images(
     return images, pad_mask
 
 
+def _delay_num_cols(seq_len: int, delay: int, embedding: int) -> int:
+    col = 0
+    while (col * delay + embedding) <= seq_len:
+        col += 1
+    if col < embedding and col * delay != seq_len and col * delay + embedding > seq_len:
+        col += 1
+    return max(col, 1)
+
+
+def images_to_series_average_overlap(
+    images: torch.Tensor,
+    embedder: DelayEmbedder,
+    seq_len: int,
+) -> torch.Tensor:
+    """
+    Inverse delay embedding with overlap averaging.
+    images: (B, C, H, W) padded square delay-images
+    returns: (B, C, T)
+    """
+    bsz, channels, emb, _ = images.shape
+    cols = _delay_num_cols(seq_len=seq_len, delay=embedder.delay, embedding=emb)
+    img_non_square = images[:, :, :, :cols]
+
+    series_sum = torch.zeros((bsz, channels, seq_len), dtype=images.dtype, device=images.device)
+    series_cnt = torch.zeros_like(series_sum)
+
+    for i in range(cols - 1):
+        start = i * embedder.delay
+        end = start + emb
+        patch = img_non_square[:, :, :, i]
+        series_sum[:, :, start:end] += patch
+        series_cnt[:, :, start:end] += 1.0
+
+    start = (cols - 1) * embedder.delay
+    rem = max(seq_len - start, 1)
+    patch_last = img_non_square[:, :, :rem, cols - 1]
+    series_sum[:, :, start:] += patch_last
+    series_cnt[:, :, start:] += 1.0
+
+    return series_sum / torch.clamp(series_cnt, min=1.0)
+
+
 def make_image_embedder(args, seq_len: int, device: torch.device) -> DelayEmbedder:
     return DelayEmbedder(device=device, seq_len=seq_len, delay=args.delay, embedding=args.embedding)
 
@@ -257,6 +298,8 @@ def run_epoch(
     totals = {
         "loss": 0.0,
         "recon_loss": 0.0,
+        "image_recon_loss": 0.0,
+        "ts_recon_loss": 0.0,
         "kl_loss": 0.0,
         "perplexity": 0.0,
         "assignment_entropy": 0.0,
@@ -271,21 +314,31 @@ def run_epoch(
     pbar = tqdm(dataloader, desc=desc, file=sys.stdout, dynamic_ncols=True)
     for batch in pbar:
         series = batch[0].to(device, non_blocking=True)
+        seq_len = int(series.shape[-1])
         x, pad_mask = series_batch_to_images(series, embedder)
         if pad_mask is None:
             raise RuntimeError("pad_mask is required for masked reconstruction loss.")
 
         with torch.set_grad_enabled(training):
             out = model(x)
-            loss_dict = model.loss_function(
+            image_loss_dict = model.loss_function(
                 x,
                 out["recon"],
                 out["kl_loss"],
                 recon_weight=args.recon_weight,
-                kl_weight=args.kl_weight,
+                kl_weight=0.0,
                 mask=pad_mask,
             )
-            loss = loss_dict["loss"]
+            recon_series = images_to_series_average_overlap(out["recon"], embedder, seq_len=seq_len)
+            if args.ts_loss_type == "l1":
+                ts_recon = torch.mean(torch.abs(recon_series - series))
+            else:
+                ts_recon = torch.mean((recon_series - series) ** 2)
+
+            image_recon = image_loss_dict["recon_loss"]
+            kl_loss = image_loss_dict["kl_loss"]
+            total_recon = image_recon + args.ts_recon_weight * ts_recon
+            loss = total_recon + args.kl_weight * kl_loss
             if training:
                 optimizer.zero_grad(set_to_none=True)
                 loss.backward()
@@ -295,8 +348,10 @@ def run_epoch(
 
         _update_used_codes(used_mask, out["indices"])
         totals["loss"] += float(loss.item())
-        totals["recon_loss"] += float(loss_dict["recon_loss"].item())
-        totals["kl_loss"] += float(loss_dict["kl_loss"].item())
+        totals["recon_loss"] += float(total_recon.item())
+        totals["image_recon_loss"] += float(image_recon.item())
+        totals["ts_recon_loss"] += float(ts_recon.item())
+        totals["kl_loss"] += float(kl_loss.item())
         totals["perplexity"] += float(out["perplexity"].item())
         totals["assignment_entropy"] += float(out["assignment_entropy"].item())
         totals["batch_entropy"] += float(out["batch_entropy"].item())
@@ -305,8 +360,9 @@ def run_epoch(
 
         pbar.set_postfix(
             loss=f"{loss.item():.4f}",
-            recon=f"{loss_dict['recon_loss'].item():.4f}",
-            kl=f"{loss_dict['kl_loss'].item():.4f}",
+            img_rec=f"{image_recon.item():.4f}",
+            ts_rec=f"{ts_recon.item():.4f}",
+            kl=f"{kl_loss.item():.4f}",
             ppx=f"{out['perplexity'].item():.2f}",
             used=int(used_mask.sum().item()),
         )
@@ -442,19 +498,15 @@ def train(args):
         extra_scale=np.array(False, dtype=bool),
     )
 
-    wb = None
-    if args.wandb:
-        if wandb is None:
-            raise ImportError("wandb is not installed. Please install wandb or run without --wandb.")
-        run_name = args.wandb_run_name
-        if run_name is None:
-            run_name = f"softvq_{args.dataset_name}_len{seq_len}_d{args.delay}_e{args.embedding}"
-        wb = wandb.init(
-            project=args.wandb_project,
-            name=run_name,
-            config={**vars(args), **metadata, "save_dir": str(save_dir)},
-            dir=str(save_dir),
-        )
+    if wandb is None:
+        raise ImportError("wandb is not installed. Please install wandb to run this training script.")
+    run_name = f"{args.dataset_name}_len{seq_len}"
+    wb = wandb.init(
+        project="soft-vqvae",
+        name=run_name,
+        config={**vars(args), **metadata, "save_dir": str(save_dir)},
+        dir=str(save_dir),
+    )
 
     print(f"device: {device}", flush=True)
     print(f"delay image shape: ({image_channels}, {image_resolution}, {image_resolution})", flush=True)
@@ -470,26 +522,25 @@ def train(args):
         log_metrics("train", train_metrics, epoch)
         log_metrics("val", val_metrics, epoch)
 
-        if wb is not None:
-            wb.log(
-                {
-                    **{f"train/{key}": value for key, value in train_metrics.items()},
-                    **{f"val/{key}": value for key, value in val_metrics.items()},
-                    "val/best_loss": min(best_val_loss, val_metrics["loss"]),
-                    "epoch": epoch,
-                    "lr": optimizer.param_groups[0]["lr"],
-                },
-                step=epoch,
-            )
-            if args.wandb_log_images_every > 0 and epoch % args.wandb_log_images_every == 0:
-                x_vis, recon_vis, mask_vis = collect_val_preview(model, val_loader, device, embedder)
-                log_payload = {
-                    "viz/input_image": wandb.Image(x_vis[0, 0].numpy()),
-                    "viz/recon_image": wandb.Image(recon_vis[0, 0].numpy()),
-                }
-                if mask_vis is not None:
-                    log_payload["viz/pad_mask"] = wandb.Image(mask_vis[0, 0].numpy())
-                wb.log(log_payload, step=epoch)
+        wb.log(
+            {
+                **{f"train/{key}": value for key, value in train_metrics.items()},
+                **{f"val/{key}": value for key, value in val_metrics.items()},
+                "val/best_loss": min(best_val_loss, val_metrics["loss"]),
+                "epoch": epoch,
+                "lr": optimizer.param_groups[0]["lr"],
+            },
+            step=epoch,
+        )
+        if args.wandb_log_images_every > 0 and epoch % args.wandb_log_images_every == 0:
+            x_vis, recon_vis, mask_vis = collect_val_preview(model, val_loader, device, embedder)
+            log_payload = {
+                "viz/input_image": wandb.Image(x_vis[0, 0].numpy()),
+                "viz/recon_image": wandb.Image(recon_vis[0, 0].numpy()),
+            }
+            if mask_vis is not None:
+                log_payload["viz/pad_mask"] = wandb.Image(mask_vis[0, 0].numpy())
+            wb.log(log_payload, step=epoch)
 
         save_checkpoint(save_dir / "last.pt", model, optimizer, epoch, best_val_loss, args, metadata)
         torch.save(model.state_dict(), save_dir / "last_state_dict.pt")
@@ -510,8 +561,7 @@ def train(args):
                 metadata,
             )
 
-    if wb is not None:
-        wb.finish()
+    wb.finish()
 
 
 if __name__ == "__main__":

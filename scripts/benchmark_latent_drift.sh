@@ -1,0 +1,20 @@
+python benchmarking_latent_drift.py \
+  --output_dir ./outputs/latent_drift \
+  --model DriftDiT-Tiny \
+  --batch_size 128 \
+  --batch_n_pos 256 \
+  --batch_n_neg 256 \
+  --temperatures 0.02,0.05,0.2 \
+  --epochs 1000 \
+  --queue_size 2048 \
+  --ts_seq_len 512 \
+  --ts_delay 8 \
+  --ts_embedding 64 \
+  --ts_stride 1 \
+  --one_channel \
+  --decode_average_overlap \
+  --softvq_ckpt_path /mnt/unites8/playpen/haochenz/Drift/soft_vqvae_benchmark/ErcotData/best.pt \
+  --dataset_name ErcotData \
+  --data ErcotData \
+  --datasets_dir /mnt/unites8/haochenz/Time_Series_Datasets \
+  --rel_path ERCOT_merged.csv
