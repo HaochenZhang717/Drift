@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 
-from JITT1.model_jit_t1 import JITT1, JITT1Config
+from .model_jit_t1 import JITT1, JITT1Config
 
 
 class Denoiser(nn.Module):

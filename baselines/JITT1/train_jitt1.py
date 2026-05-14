@@ -27,7 +27,7 @@ if str(_REPO_ROOT) not in sys.path:
 if str(_THIS_FILE.parents[1]) not in sys.path:
     sys.path.insert(0, str(_THIS_FILE.parents[1]))
 
-from JITT1.denoiser import Denoiser
+from baselines.JITT1.denoiser import Denoiser
 from data_provider.data_provider import data_provider
 
 

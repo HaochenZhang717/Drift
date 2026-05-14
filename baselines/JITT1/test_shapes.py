@@ -1,8 +1,8 @@
 import torch
 from types import SimpleNamespace
 
-from JITT1.model_jit_t1 import JITT1, JITT1Config
-from JITT1.denoiser import Denoiser
+from .model_jit_t1 import JITT1, JITT1Config
+from .denoiser import Denoiser
 
 
 def count_trainable_params(model):
