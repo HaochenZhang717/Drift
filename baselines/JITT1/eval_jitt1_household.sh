@@ -8,7 +8,7 @@ for SEQ_LEN in 64 128 256 512; do
   python /playpen-shared/haochenz/Drift/eval_jitt1_discriminative_ckpts.py \
     --run_dir "${RUN_DIR}" \
     --output_jsonl "${RUN_DIR}/discriminative_scores_ema.jsonl" \
-    --num_runs 10 \
+    --num_runs 1 \
     --gen_batch_size 256 \
     --real_batch_size 256 \
     --num_workers 8 \
