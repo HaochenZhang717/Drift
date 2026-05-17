@@ -12,8 +12,6 @@ import pandas as pd
 from sklearn.preprocessing import StandardScaler
 
 
-
-
 def MinMaxScaler(data, return_scalers=False):
     """Min Max normalizer.
 

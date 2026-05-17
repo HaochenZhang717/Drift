@@ -540,6 +540,39 @@ AI_READI_STUDY_GROUPS = [
 
 AI_READI_CLINICAL_SITES = ["UW", "UCSD", "UAB"]
 
+AI_READI_CGM_ENHANCED_NUMERIC_COLS = [
+    "glucose_value",
+    "hba1c_value",
+    "insulin_value",
+    "paid_diabetes_burden_eng",
+    "paid_diabetes_burden_cml",
+    "lbscat_a1c_value",
+]
+
+AI_READI_CGM_ENHANCED_BINARY_COLS = [
+    "insulin_treatment_self_report",
+    "a1c_pills_self_report",
+    "dm2_self_report",
+    "prediabetes_self_report",
+    "elevated_a1c_self_report",
+    "diabetic_retinopathy_self_report",
+]
+
+AI_READI_CGM_ENHANCED_MEDICATION_LABEL_COLS = [
+    "aspirin_past_2_weeks_label_en",
+    "acetaminophen_past_2_weeks_label_en",
+    "antihistamines_past_2_weeks_label_en",
+    "ibuprofen_past_2_weeks_label_en",
+    "sleeping_pills_past_2_weeks_label_en",
+    "decongestants_past_2_weeks_label_en",
+]
+
+AI_READI_CGM_ENHANCED_SELECTED_COLS = (
+    AI_READI_CGM_ENHANCED_NUMERIC_COLS
+    + AI_READI_CGM_ENHANCED_BINARY_COLS
+    + AI_READI_CGM_ENHANCED_MEDICATION_LABEL_COLS
+)
+
 
 def _site_from_patient_id(patient_id: str) -> tuple[int, int, torch.Tensor]:
     """Return compact label, original site code, and one-hot clinical site from AIREADI patient id."""
@@ -609,6 +642,87 @@ def _load_aireadi_participant_metadata(
 def _source_starts_with(series: pd.Series, prefixes: tuple[str, ...]) -> pd.Series:
     source = series.fillna("").astype(str).str.lower()
     return source.apply(lambda value: any(value.startswith(prefix.lower()) for prefix in prefixes))
+
+
+def _to_float_or_nan(value: Any) -> float:
+    if value is None:
+        return float("nan")
+    text = str(value).strip()
+    if text in {"", "__MISSING__", "nan", "NaN", "None"}:
+        return float("nan")
+    try:
+        return float(text)
+    except (TypeError, ValueError):
+        return float("nan")
+
+
+def _build_aireadi_cgm_enhanced_features(
+    cgm_enhanced_features_path: Optional[str],
+) -> tuple[Dict[str, Dict[str, Any]], Dict[str, Dict[str, int]]]:
+    if cgm_enhanced_features_path is None:
+        return {}, {}
+
+    path = Path(cgm_enhanced_features_path)
+    if not path.exists():
+        raise FileNotFoundError(path)
+
+    usecols = ["person_id"] + AI_READI_CGM_ENHANCED_SELECTED_COLS
+    df = pd.read_csv(path, usecols=usecols, low_memory=False)
+
+    medication_vocab: Dict[str, Dict[str, int]] = {}
+    for col in AI_READI_CGM_ENHANCED_MEDICATION_LABEL_COLS:
+        tokens = (
+            df[col]
+            .fillna("__MISSING__")
+            .astype(str)
+            .str.strip()
+            .replace("", "__MISSING__")
+        )
+        unique_tokens = sorted(set(tokens.tolist()))
+        medication_vocab[col] = {token: i for i, token in enumerate(unique_tokens)}
+
+    feature_by_patient: Dict[str, Dict[str, Any]] = {}
+    for row in df.itertuples(index=False):
+        patient_id = _clinical_patient_id(getattr(row, "person_id", None))
+        if patient_id is None:
+            continue
+
+        numeric_values = []
+        numeric_mask = []
+        for col in AI_READI_CGM_ENHANCED_NUMERIC_COLS:
+            value = _to_float_or_nan(getattr(row, col, None))
+            numeric_values.append(0.0 if not np.isfinite(value) else float(value))
+            numeric_mask.append(1.0 if np.isfinite(value) else 0.0)
+
+        binary_values = []
+        binary_mask = []
+        for col in AI_READI_CGM_ENHANCED_BINARY_COLS:
+            value = _to_float_or_nan(getattr(row, col, None))
+            binary_values.append(0.0 if not np.isfinite(value) else float(value))
+            binary_mask.append(1.0 if np.isfinite(value) else 0.0)
+
+        medication_codes = []
+        medication_mask = []
+        medication_raw: Dict[str, str] = {}
+        for col in AI_READI_CGM_ENHANCED_MEDICATION_LABEL_COLS:
+            token = str(getattr(row, col, "__MISSING__")).strip()
+            if token == "" or token == "nan":
+                token = "__MISSING__"
+            medication_raw[col] = token
+            medication_codes.append(int(medication_vocab[col].get(token, 0)))
+            medication_mask.append(0.0 if token == "__MISSING__" else 1.0)
+
+        feature_by_patient[patient_id] = {
+            "numeric_values": torch.tensor(numeric_values, dtype=torch.float32),
+            "numeric_mask": torch.tensor(numeric_mask, dtype=torch.float32),
+            "binary_values": torch.tensor(binary_values, dtype=torch.float32),
+            "binary_mask": torch.tensor(binary_mask, dtype=torch.float32),
+            "medication_codes": torch.tensor(medication_codes, dtype=torch.long),
+            "medication_mask": torch.tensor(medication_mask, dtype=torch.float32),
+            "medication_raw": medication_raw,
+        }
+
+    return feature_by_patient, medication_vocab
 
 
 def build_aireadi_clinical_features(
@@ -763,6 +877,8 @@ class AIREADIModalityImputationDataset(Dataset):
         include_participant_metadata: bool = True,
         include_study_group: bool = True,
         include_clinical_site: bool = True,
+        cgm_enhanced_features_path: Optional[str] = None,
+        include_cgm_enhanced_features: bool = True,
         pad: bool = True,
         return_dict: bool = True,
     ):
@@ -804,6 +920,8 @@ class AIREADIModalityImputationDataset(Dataset):
         self.include_participant_metadata = bool(include_participant_metadata)
         self.include_study_group = bool(include_study_group)
         self.include_clinical_site = bool(include_clinical_site)
+        self.cgm_enhanced_features_path = cgm_enhanced_features_path
+        self.include_cgm_enhanced_features = bool(include_cgm_enhanced_features)
         self.pad = bool(pad)
         self.return_dict = bool(return_dict)
         self.max_events_per_modality = max_events_per_modality or {}
@@ -864,6 +982,13 @@ class AIREADIModalityImputationDataset(Dataset):
         self.clinical_masks: Dict[str, torch.Tensor] = {}
         self.clinical_feature_names: list[str] = []
         self.clinical_feature_stats: Optional[Dict[str, Any]] = clinical_feature_stats
+        self.cgm_enhanced_features: Dict[str, Dict[str, Any]] = {}
+        self.cgm_enhanced_medication_vocab: Dict[str, Dict[str, int]] = {}
+        if self.include_cgm_enhanced_features and self.cgm_enhanced_features_path is not None:
+            (
+                self.cgm_enhanced_features,
+                self.cgm_enhanced_medication_vocab,
+            ) = _build_aireadi_cgm_enhanced_features(self.cgm_enhanced_features_path)
         if self.include_clinical_static and clinical_root is not None:
             (
                 self.clinical_features,
@@ -1229,6 +1354,30 @@ class AIREADIModalityImputationDataset(Dataset):
             result["clinical_site_code"] = torch.tensor(site_code, dtype=torch.long)
             result["clinical_site_one_hot"] = clinical_site_one_hot
             result["clinical_site"] = participant_meta.get("clinical_site", "")
+        if self.include_cgm_enhanced_features:
+            default_cgm = {
+                "numeric_values": torch.zeros(len(AI_READI_CGM_ENHANCED_NUMERIC_COLS), dtype=torch.float32),
+                "numeric_mask": torch.zeros(len(AI_READI_CGM_ENHANCED_NUMERIC_COLS), dtype=torch.float32),
+                "binary_values": torch.zeros(len(AI_READI_CGM_ENHANCED_BINARY_COLS), dtype=torch.float32),
+                "binary_mask": torch.zeros(len(AI_READI_CGM_ENHANCED_BINARY_COLS), dtype=torch.float32),
+                "medication_codes": torch.zeros(len(AI_READI_CGM_ENHANCED_MEDICATION_LABEL_COLS), dtype=torch.long),
+                "medication_mask": torch.zeros(len(AI_READI_CGM_ENHANCED_MEDICATION_LABEL_COLS), dtype=torch.float32),
+                "medication_raw": {col: "__MISSING__" for col in AI_READI_CGM_ENHANCED_MEDICATION_LABEL_COLS},
+            }
+            cgm_item = self.cgm_enhanced_features.get(patient_id, default_cgm)
+            result["cgm_enhanced_numeric_values"] = cgm_item["numeric_values"]
+            result["cgm_enhanced_numeric_mask"] = cgm_item["numeric_mask"]
+            result["cgm_enhanced_binary_values"] = cgm_item["binary_values"]
+            result["cgm_enhanced_binary_mask"] = cgm_item["binary_mask"]
+            result["cgm_enhanced_medication_codes"] = cgm_item["medication_codes"]
+            result["cgm_enhanced_medication_mask"] = cgm_item["medication_mask"]
+            result["cgm_enhanced_medication_raw"] = cgm_item["medication_raw"]
+            result["cgm_enhanced_numeric_feature_names"] = list(AI_READI_CGM_ENHANCED_NUMERIC_COLS)
+            result["cgm_enhanced_binary_feature_names"] = list(AI_READI_CGM_ENHANCED_BINARY_COLS)
+            result["cgm_enhanced_medication_feature_names"] = list(
+                AI_READI_CGM_ENHANCED_MEDICATION_LABEL_COLS
+            )
+            result["cgm_enhanced_medication_vocab"] = self.cgm_enhanced_medication_vocab
 
         return result
 
@@ -1675,6 +1824,8 @@ def get_dataset(
         include_participant_metadata = config.get("include_participant_metadata", True)
         include_study_group = config.get("include_study_group", True)
         include_clinical_site = config.get("include_clinical_site", True)
+        cgm_enhanced_features_path = config.get("cgm_enhanced_features_path")
+        include_cgm_enhanced_features = config.get("include_cgm_enhanced_features", True)
         pad = config.get("pad", True)
         return_dict = config.get("return_dict", True)
 
@@ -1703,6 +1854,8 @@ def get_dataset(
             include_participant_metadata=include_participant_metadata,
             include_study_group=include_study_group,
             include_clinical_site=include_clinical_site,
+            cgm_enhanced_features_path=cgm_enhanced_features_path,
+            include_cgm_enhanced_features=include_cgm_enhanced_features,
             pad=pad,
             return_dict=return_dict,
         )
@@ -1735,6 +1888,8 @@ def get_dataset(
             include_participant_metadata=include_participant_metadata,
             include_study_group=include_study_group,
             include_clinical_site=include_clinical_site,
+            cgm_enhanced_features_path=cgm_enhanced_features_path,
+            include_cgm_enhanced_features=include_cgm_enhanced_features,
             pad=pad,
             return_dict=return_dict,
         )
