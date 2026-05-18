@@ -55,7 +55,7 @@ python train_multimodal_jit_v2.py \
     \
     --epochs 1000 \
     --batch_size 256 \
-    --num_workers 4 \
+    --num_workers 32 \
     --seed 42 \
     \
     --lr 1e-4 \
