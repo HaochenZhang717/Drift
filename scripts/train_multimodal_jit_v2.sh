@@ -7,7 +7,7 @@ set -x
 # Environment
 # --------------------------------------------------------
 
-export CUDA_VISIBLE_DEVICES=3
+export CUDA_VISIBLE_DEVICES=0
 
 EXP_NAME=multimodal_jit_v2
 
@@ -61,7 +61,7 @@ python train_multimodal_jit_v2.py \
     --lr 1e-4 \
     --weight_decay 1e-5 \
     --grad_clip 1.0 \
-    --log_interval 100 \
+    --log_interval 10 \
     --save_interval 100 \
     \
     --img_size ${IMG_SIZE} \
